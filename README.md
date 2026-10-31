@@ -2,7 +2,7 @@
 
 FastAPI + Ollama `qwen2.5:3b` → Fabric JSON карусели.
 
-Все параметры запроса обязательны. Без них — ошибка валидации / генерации.
+Все параметры запроса обязательны (без дефолтов).
 
 ## Запуск
 
@@ -22,9 +22,11 @@ POST /generate
   "slides_count": 7,
   "language": "ru",
   "handle": "@ekoreshilov",
-  "category": "Маркетинг",
+  "cover": "https://example.com/photo.jpg",
   "save": true
 }
 ```
 
-`aspect_ratio`: `1:1` · `4:5` · `9:16` · `16:9`
+- `cover` — URL/путь картинки на 1-м слайде; `""` = серый placeholder  
+  Сервер скачивает картинку и вшивает `data:` URL в JSON (без CORS в Fabric).  
+- `category` — генерирует ИИ одним словом (не передавать в запросе)

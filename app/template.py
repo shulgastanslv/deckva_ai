@@ -7,7 +7,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from app.fabric import canvas_size, normalize_aspect, rect, slide, textbox
+from app.fabric import canvas_size, image, normalize_aspect, rect, slide, textbox
 from app.schemas import CarouselContent, SlideContent
 
 BG = "#ffffff"
@@ -15,16 +15,16 @@ GRID = "#cfcfcf"
 PHOTO = "#c8c8c8"
 TEXT = "#111111"
 MUTED = "#9a9a9a"
-ON_ACCENT = "#2a2a2a"  # тёмный текст на пастели читается лучше белого
+ON_ACCENT = "#2a2a2a"
 FONT = "Montserrat"
 
 SIZE_HEAD = 55
 SIZE_BODY = 25
 SIZE_META = 20
-GAP = 10  # всегда 10px после заголовка / между текстовыми блоками
+GAP = 20  # всегда 10px после заголовка / между текстовыми блоками
 LINE_HEIGHT = 0.90
 GRID_OPACITY = 0.22
-PHOTO_TEXT_GAP = 20  # отступ текста от картинки на 1-м слайде
+PHOTO_TEXT_GAP = 2  # отступ текста от картинки на 1-м слайде
 
 PASTELS = [
     "#F6C1C0",  # rose
@@ -263,13 +263,18 @@ def layout_cover(
     *,
     index: int,
     with_grid: bool,
+    cover_src: str,
     rng: random.Random,
 ) -> dict[str, Any]:
     photo_h = lay.h * 0.48
-    objs: list[dict[str, Any]] = [
-        rect(left=0, top=0, width=lay.w, height=photo_h, fill=PHOTO, swibp_slot="image"),
-        rect(left=0, top=photo_h, width=lay.w, height=lay.h - photo_h, fill=BG, swibp_slot="card"),
-    ]
+    # фон слайда белый — нижний rectangle не нужен
+    if cover_src.strip():
+        objs: list[dict[str, Any]] = [
+            image(cover_src.strip(), left=0, top=0, width=lay.w, height=photo_h, swibp_slot="image")
+        ]
+    else:
+        objs = [rect(left=0, top=0, width=lay.w, height=photo_h, fill=PHOTO, swibp_slot="image")]
+
     if with_grid:
         objs.extend(_grid(lay.w, lay.h, lay.step, top=photo_h, height=lay.h - photo_h))
 
@@ -295,7 +300,6 @@ def layout_cover(
     body = _clip(s.body, 200) if s.body else ""
     total_h = _stack_height(heading, body, [], "", lay)
 
-    # строго 20px от низа картинки — затем можно чуть опустить при центрировании, но не ближе 20px
     y = _content_start_y(total_h, lay, zone_top=photo_h + PHOTO_TEXT_GAP, zone_bottom=lay.h)
     y = max(y, photo_h + PHOTO_TEXT_GAP)
 
@@ -319,7 +323,8 @@ def layout_content(
     with_grid: bool,
     rng: random.Random,
 ) -> dict[str, Any]:
-    objs: list[dict[str, Any]] = [rect(left=0, top=0, width=lay.w, height=lay.h, fill=BG, swibp_slot="card")]
+    # без фонового rectangle — цвет через slide.background
+    objs: list[dict[str, Any]] = []
     if with_grid:
         objs.extend(_grid(lay.w, lay.h, lay.step))
 
@@ -385,9 +390,9 @@ def layout_orange_quote(
     index: int,
     rng: random.Random,
 ) -> dict[str, Any]:
+    # цветной фон через slide.background — без rectangle на весь холст
     bg = _pastel(rng)
-    objs: list[dict[str, Any]] = [rect(left=0, top=0, width=lay.w, height=lay.h, fill=bg, swibp_slot="card")]
-    objs.append(
+    objs: list[dict[str, Any]] = [
         textbox(
             handle,
             left=lay.pad,
@@ -401,7 +406,7 @@ def layout_orange_quote(
             swibp_role="handle",
             swibp_style="body",
         )
-    )
+    ]
     objs.append(_counter(index, lay, fill=TEXT))
 
     heading = _clip(s.heading, 180)
@@ -423,7 +428,7 @@ def layout_cta(
     with_grid: bool,
     rng: random.Random,
 ) -> dict[str, Any]:
-    objs: list[dict[str, Any]] = [rect(left=0, top=0, width=lay.w, height=lay.h, fill=BG, swibp_slot="card")]
+    objs: list[dict[str, Any]] = []
     if with_grid:
         objs.extend(_grid(lay.w, lay.h, lay.step))
 
@@ -467,6 +472,7 @@ def build_slide(
     lay: L,
     handle: str,
     category: str,
+    cover_src: str,
     rng: random.Random,
 ) -> dict[str, Any]:
     is_first = index == 0
@@ -482,7 +488,9 @@ def build_slide(
         layout = "statement"
 
     if layout == "cover":
-        return layout_cover(s, lay, handle, category, index=index, with_grid=with_grid, rng=rng)
+        return layout_cover(
+            s, lay, handle, category, index=index, with_grid=with_grid, cover_src=cover_src, rng=rng
+        )
     if layout == "orange_quote":
         return layout_orange_quote(s, lay, handle, category, index=index, rng=rng)
     if layout == "cta":
@@ -509,7 +517,16 @@ def build_carousel(
         raise RuntimeError("Нет слайдов для сборки.")
 
     slides_out = [
-        build_slide(s, index=i, total=total, lay=lay, handle=handle, category=category, rng=rng)
+        build_slide(
+            s,
+            index=i,
+            total=total,
+            lay=lay,
+            handle=handle,
+            category=category,
+            cover_src=content.cover,
+            rng=rng,
+        )
         for i, s in enumerate(content.slides)
     ]
 

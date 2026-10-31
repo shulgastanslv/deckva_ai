@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from app.cover_media import resolve_cover_src
 from app.ollama_client import generate_content, generate_extra_slides
 from app.schemas import CarouselContent, GenerateRequest, SlideContent
 from app.template import build_carousel
@@ -29,6 +30,15 @@ def _require_str(value: Any, field: str) -> str:
     if not text:
         raise RuntimeError(f"ИИ не вернул обязательное поле: {field}")
     return text
+
+
+def _require_category(value: Any) -> str:
+    text = _require_str(value, "category")
+    # одно слово
+    word = text.split()[0].strip(".,;:!?«»\"'")
+    if not word or " " in word:
+        raise RuntimeError(f"category должна быть одним словом, получено: {text!r}")
+    return word
 
 
 def _as_list(value: Any) -> list[str]:
@@ -91,7 +101,6 @@ async def _normalize_slides(raw: dict[str, Any], req: GenerateRequest) -> list[S
             language=req.language,
             existing_headings=[s.heading for s in out],
             handle=req.handle,
-            category=req.category,
         )
         extra = _parse_slides(extra_raw.get("slides"), need)
         if len(extra) < need:
@@ -109,32 +118,34 @@ async def _normalize_slides(raw: dict[str, Any], req: GenerateRequest) -> list[S
         )
 
     out = out[: req.slides_count]
-    if out[0].layout != "cover":
-        raise RuntimeError("Первый слайд должен иметь layout=cover.")
-    if out[-1].layout != "cta":
-        raise RuntimeError("Последний слайд должен иметь layout=cta.")
+    # структура шаблона: первый всегда cover, последний всегда cta
+    out[0].layout = "cover"
+    out[-1].layout = "cta"
     return out
 
 
-async def _to_content(raw: dict[str, Any], req: GenerateRequest) -> CarouselContent:
+async def _to_content(raw: dict[str, Any], req: GenerateRequest, cover_src: str) -> CarouselContent:
     return CarouselContent(
         title=_require_str(raw.get("title"), "title"),
         tagline=str(raw.get("tagline", "")).strip(),
         handle=req.handle,
-        category=req.category,
+        category=_require_category(raw.get("category")),
+        cover=cover_src,
         slides=await _normalize_slides(raw, req),
     )
 
 
 async def generate_carousel(req: GenerateRequest) -> dict[str, Any]:
+    # скачиваем cover на бэке → data URL (Pinterest и др. без CORS в браузере)
+    cover_src = await resolve_cover_src(req.cover)
+
     raw = await generate_content(
         req.topic,
         slides_count=req.slides_count,
         language=req.language,
         handle=req.handle,
-        category=req.category,
     )
-    content = await _to_content(raw, req)
+    content = await _to_content(raw, req, cover_src)
     seed = int(time.time() * 1000) % 2_147_483_647
     carousel = build_carousel(content, aspect_ratio=req.aspect_ratio, seed=seed)
 

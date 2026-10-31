@@ -10,14 +10,15 @@ OLLAMA_BASE = "http://127.0.0.1:11434"
 MODEL = "qwen2.5:3b"
 
 
-SYSTEM_PROMPT = """Ты копирайтер экспертных Instagram/Pinterest-каруселей.
-Пиши коротко и по делу. Язык = язык темы.
+SYSTEM_PROMPT = """Ты копирайтер экспертных Threads/Pinterest-каруселей.
+Пиши коротко и по делу. Язык = язык темы. Если топ = составляй топ.
 Верни ТОЛЬКО валидный JSON без markdown.
 
 Схема:
 {
   "title": "название карусели",
   "tagline": "слоган блога",
+  "category": "ОдноСлово",
   "slides": [
     {
       "layout": "cover|statement|orange_quote|tips|funnel|results|cta",
@@ -44,6 +45,7 @@ SYSTEM_PROMPT = """Ты копирайтер экспертных Instagram/Pint
 - layout обязателен у каждого слайда.
 - heading обязателен и непустой.
 - title обязателен.
+- category обязателен: ровно ОДНО слово (без пробелов), по теме карусели.
 - Все тексты уникальные под тему.
 - items без стрелок в начале.
 - Не пиши счётчики слайдов."""
@@ -69,7 +71,6 @@ async def generate_content(
     slides_count: int,
     language: str,
     handle: str,
-    category: str,
     base_url: str = OLLAMA_BASE,
     model: str = MODEL,
     timeout: float = 300.0,
@@ -78,8 +79,6 @@ async def generate_content(
         raise RuntimeError("Не указан topic.")
     if not handle.strip():
         raise RuntimeError("Не указан handle.")
-    if not category.strip():
-        raise RuntimeError("Не указан category.")
     if not language.strip():
         raise RuntimeError("Не указан language.")
     if slides_count < 4:
@@ -90,9 +89,9 @@ async def generate_content(
         f"Тема: {topic}\n"
         f"Язык: {lang}\n"
         f"Число слайдов: ровно {slides_count}\n"
-        f"Хэндл (для контекста, в JSON не дублируй обязательно): {handle}\n"
-        f"Категория (для контекста): {category}\n"
+        f"Хэндл (для контекста): {handle}\n"
         "Сгенерируй полную карусель: все тексты уникальные.\n"
+        "Обязательно верни category — одно слово по теме.\n"
         "Первый layout=cover, последний layout=cta."
     )
 
@@ -134,15 +133,14 @@ async def generate_extra_slides(
     language: str,
     existing_headings: list[str],
     handle: str,
-    category: str,
     base_url: str = OLLAMA_BASE,
     model: str = MODEL,
     timeout: float = 300.0,
 ) -> dict[str, Any]:
     if count < 1:
         raise RuntimeError("count для догенерации должен быть >= 1.")
-    if not handle.strip() or not category.strip():
-        raise RuntimeError("Для догенерации нужны handle и category.")
+    if not handle.strip():
+        raise RuntimeError("Для догенерации нужен handle.")
 
     lang = "русском" if language.startswith("ru") else "английском"
     used = "\n".join(f"- {h}" for h in existing_headings[:12])
@@ -154,7 +152,6 @@ async def generate_extra_slides(
         f"Язык: {lang}\n"
         f"Нужно ещё ровно {count} слайд(ов).\n"
         f"Хэндл: {handle}\n"
-        f"Категория: {category}\n"
         f"Уже есть заголовки (не повторяй):\n{used}\n"
         'Верни JSON: {"slides":[...]} с обязательными layout и heading.'
     )

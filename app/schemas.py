@@ -22,7 +22,7 @@ class GenerateRequest(BaseModel):
     slides_count: int = Field(..., ge=4, le=10)
     language: str = Field(..., min_length=2, max_length=8)
     handle: str = Field(..., min_length=2, max_length=64)
-    category: str = Field(..., min_length=1, max_length=64)
+    cover: str = Field(..., description="URL/путь картинки обложки; пустая строка = серый placeholder")
     save: bool = Field(...)
 
 
@@ -44,6 +44,7 @@ class CarouselContent(BaseModel):
     tagline: str
     handle: str
     category: str
+    cover: str
     slides: list[SlideContent]
 
 

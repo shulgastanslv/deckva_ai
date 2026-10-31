@@ -171,6 +171,40 @@ def rect(
     return obj
 
 
+def image(
+    src: str,
+    *,
+    left: float,
+    top: float,
+    width: float,
+    height: float,
+    swibp_slot: str = "image",
+    opacity: float = 1.0,
+) -> dict[str, Any]:
+    """Fabric Image. Для data: URL crossOrigin не ставим (иначе CORS/canvas ломается)."""
+    obj = _base(
+        left=left,
+        top=top,
+        width=width,
+        height=height,
+        fill="",
+        opacity=opacity,
+    )
+    obj.update(
+        {
+            "type": "Image",
+            "src": src,
+            "cropX": 0,
+            "cropY": 0,
+            "swibpSlot": swibp_slot,
+        }
+    )
+    # remote URL — anonymous; data URL — без crossOrigin
+    if not src.startswith("data:"):
+        obj["crossOrigin"] = "anonymous"
+    return obj
+
+
 def slide(
     background: str,
     objects: list[dict[str, Any]],
