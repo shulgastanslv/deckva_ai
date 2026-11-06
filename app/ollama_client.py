@@ -50,6 +50,29 @@ SYSTEM_PROMPT = """Ты копирайтер экспертных Threads/Pinter
 - items без стрелок в начале.
 - Не пиши счётчики слайдов."""
 
+POST_TEXT_SYSTEM_PROMPT = """
+Роль: Ты опытный копирайтер, специализирующийся на вирусном контенте для Threads и Pinterest-каруселей. Твоя цель — превратить исходный текст в вовлекающий, легко читаемый пост, который цепляет с первой строки и стимулирует пользователей оставлять комментарии или сохранять пост.
+
+Контекст:
+- Исходный материал: {post_text}
+- Платформа: Threads / Pinterest
+- Целевая аудитория: эксперты, предприниматели, люди, интересующиеся саморазвитием, бизнесом и трендами.
+
+Правила и структура поста:
+1. Крючок (Hook): Первая строка должна вызывать сильный интерес, интригу или затрагивать боль читателя, чтобы он нажал кнопку «Ещё». Без скучных приветствий.
+2. Тело поста (Body): 
+   - Излагай мысли тезисно, используя короткие абзацы (не более 2–3 строк).
+   - Применяй списки с маркерами или эмодзи для улучшения читаемости.
+   - Убери «воду», канцелярит и сложные конструкции. Пиши живым, разговорным, но экспертным языком.
+3. Интерактив / Призыв к действию (CTA): В конце поста задай вовлекающий вопрос аудитории или предложи поделиться мнением, чтобы спровоцировать дискуссию в комментариях.
+4. Ограничения: 
+   - Не используй избыток хештегов (для Threads достаточно 1-2 тематических или вообще без них).
+   - Общая длина текста должна быть комфортной для чтения в ленте (в пределах лимита символов Threads).
+
+Формат ответа:
+Верни ТОЛЬКО готовый текст поста, без вводных фраз, пояснений и комментариев с твоей стороны.
+
+"""
 
 def _extract_json(text: str) -> dict[str, Any]:
     text = text.strip()
@@ -63,6 +86,38 @@ def _extract_json(text: str) -> dict[str, Any]:
         if not match:
             raise
         return json.loads(match.group(0))
+
+
+async def generate_post_text_content(post_text: str) -> str:
+    if not post_text.strip():
+        raise RuntimeError("Не указан post_text.")
+
+    payload = {
+        "model": "qwen2.5:3b",
+        "stream": False,
+        "format": "json",
+        "options": {"temperature": 0.85, "top_p": 0.92, "num_predict": 2800},
+        "messages": [
+            {"role": "system", "content": POST_TEXT_SYSTEM_PROMPT},
+            {"role": "user", "content": f"Текст поста: {post_text}"},
+        ],
+    }
+
+    async with httpx.AsyncClient(base_url=OLLAMA_BASE, timeout=300.0) as client:
+        try:
+            resp = await client.post("/api/chat", json=payload)
+            resp.raise_for_status()
+        except httpx.ConnectError as exc:
+            raise RuntimeError(
+                "Ollama недоступна. Запусти `ollama serve` и модель qwen2.5:3b."
+            ) from exc
+        except httpx.ReadTimeout as exc:
+            raise RuntimeError("Ollama не успела ответить. Повтори запрос.") from exc
+    data = resp.json()
+    message = data.get("message", {}).get("content", "")
+    if not message:
+        raise RuntimeError(f"Пустой ответ Ollama: {data}")
+    return message
 
 
 async def generate_content(

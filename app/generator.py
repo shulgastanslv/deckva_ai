@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from app.cover_media import resolve_cover_src
-from app.ollama_client import generate_content, generate_extra_slides
+from app.ollama_client import generate_content, generate_extra_slides, generate_post_text_content
 from app.schemas import CarouselContent, GenerateRequest, SlideContent
 from app.template import build_carousel
 
@@ -177,3 +177,7 @@ async def generate_carousel(req: GenerateRequest) -> dict[str, Any]:
             "slides": carousel["slides"],
         },
     }
+
+
+async def generate_post_text(post_text: str) -> str:
+    return await generate_post_text_content(post_text)

@@ -26,6 +26,14 @@ class GenerateRequest(BaseModel):
     save: bool = Field(...)
 
 
+class GeneratePostTextRequest(BaseModel):
+    post_text: str = Field(..., min_length=2, max_length=300)
+
+
+class GeneratePostTextResponse(BaseModel):
+    text: str
+
+
 class SlideContent(BaseModel):
     layout: SlideLayout
     heading: str
