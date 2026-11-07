@@ -22,16 +22,32 @@ class GenerateRequest(BaseModel):
     slides_count: int = Field(..., ge=4, le=10)
     language: str = Field(..., min_length=2, max_length=8)
     handle: str = Field(..., min_length=2, max_length=64)
-    cover: str = Field(..., description="URL/путь картинки обложки; пустая строка = серый placeholder")
+    cover: str = Field(..., description="URL/путь обложки; пустая строка = placeholder")
     save: bool = Field(...)
 
 
 class GeneratePostTextRequest(BaseModel):
-    post_text: str = Field(..., min_length=2, max_length=300)
+    post_text: str = Field(..., min_length=2, max_length=4000)
 
 
 class GeneratePostTextResponse(BaseModel):
     text: str
+
+
+class PaletteResponse(BaseModel):
+    name: str
+    bg: str
+    text: str
+    muted: str
+    accent: str
+    accent_text: str
+    grid: str
+    photo: str
+
+
+class GeneratePaletteRequest(BaseModel):
+    topic: str = Field(..., min_length=2, max_length=300)
+    language: str = Field(..., min_length=2, max_length=8)
 
 
 class SlideContent(BaseModel):
@@ -62,4 +78,5 @@ class GenerateResponse(BaseModel):
     width: int
     height: int
     path: str | None = None
+    palette: PaletteResponse
     carousel: dict[str, Any]
