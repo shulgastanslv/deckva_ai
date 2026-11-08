@@ -5,32 +5,24 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app import credits
 from app.catalog import list_models, resolve_model_id
-from app.content import generate_post_text
-from app.cora import run_cora_fast
-from app.generator import generate_carousel
+from app.cora import get_run, list_runs_for_user, run_cora_fast
 from app.llm import complete as gateway_complete
 from app.llm import health
-from app.palette import generate_palette
 from app.schemas import (
     CoraRunRequest,
+    CoraRunResponse,
     CreditsQuoteRequest,
     GatewayCompleteRequest,
-    GeneratePaletteRequest,
-    GeneratePostTextRequest,
-    GeneratePostTextResponse,
-    GenerateRequest,
-    GenerateResponse,
-    PaletteResponse,
     SetPlanRequest,
 )
 
 app = FastAPI(
     title="Deckva AI — CORA",
     description=(
-        "CORA Fast + credits hub + OpenRouter model gateway. "
-        "Без Ollama / BYOK — только OPENROUTER_API_KEY."
+        "CORA Fast + credits hub + OpenRouter gateway. "
+        "Единый путь генерации: POST /cora/run. Без Ollama / BYOK."
     ),
-    version="0.4.0",
+    version="0.5.0",
 )
 
 app.add_middleware(
@@ -41,9 +33,23 @@ app.add_middleware(
 )
 
 
+def _http_for_cora_error(msg: str) -> int:
+    low = msg.lower()
+    if "кредит" in low or "credits" in low or "недостаточно" in low:
+        return 402
+    if "не даёт доступ" in msg or "отключена" in msg or "Неизвестная модель" in msg:
+        return 403
+    return 503
+
+
 @app.get("/health")
 async def healthcheck():
-    return {"service": "ok", "openrouter": await health()}
+    return {
+        "service": "ok",
+        "version": app.version,
+        "llmProvider": "openrouter",
+        "gateway": await health(),
+    }
 
 
 @app.get("/models")
@@ -67,10 +73,10 @@ async def models(plan: str = Query("free", pattern="^(free|starter|pro)$")):
 
 @app.get("/credits/wallet/{user_id}")
 async def wallet(user_id: str, plan: str = Query("free", pattern="^(free|starter|pro)$")):
-    credits.ensure_wallet(user_id, plan=plan)  # type: ignore[arg-type]
+    w = credits.ensure_wallet(user_id, plan=plan)  # type: ignore[arg-type]
     return {
         "userId": user_id,
-        "plan": plan,
+        "plan": w.plan,
         "balance": credits.balance_of(user_id),
         "ledger": [
             {
@@ -96,11 +102,12 @@ async def quote(req: CreditsQuoteRequest):
     except (RuntimeError, PermissionError) as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     q = credits.quote(model_id=model_id, slides=req.slides, mode=req.mode)
+    bal = credits.balance_of(req.user_id)
     return {
         **q,
         "modelId": model_id,
-        "wallet": credits.balance_of(req.user_id),
-        "affordable": credits.balance_of(req.user_id)["total"] >= q["credits"],
+        "wallet": bal,
+        "affordable": bal["total"] >= q["credits"],
     }
 
 
@@ -114,18 +121,27 @@ async def set_plan(req: SetPlanRequest):
     }
 
 
-@app.post("/cora/run")
-async def cora_run(req: CoraRunRequest):
+@app.post("/cora/run", response_model=CoraRunResponse)
+async def cora_run(req: CoraRunRequest) -> CoraRunResponse:
     try:
         return await run_cora_fast(req)
     except RuntimeError as exc:
-        msg = str(exc)
-        code = 402 if "кредит" in msg.lower() or "credits" in msg.lower() else 503
-        if "не даёт доступ" in msg or "отключена" in msg or "Неизвестная модель" in msg:
-            code = 403
-        raise HTTPException(status_code=code, detail=msg) from exc
+        raise HTTPException(status_code=_http_for_cora_error(str(exc)), detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"CORA failed: {exc}") from exc
+
+
+@app.get("/cora/runs/{cora_run_id}")
+async def cora_get(cora_run_id: str):
+    row = get_run(cora_run_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="CORA run not found")
+    return row
+
+
+@app.get("/cora/runs")
+async def cora_list(userId: str = Query(..., min_length=1), limit: int = Query(20, ge=1, le=100)):
+    return {"userId": userId, "runs": list_runs_for_user(userId, limit=limit)}
 
 
 @app.post("/internal/ai/complete")
@@ -140,49 +156,3 @@ async def internal_complete(req: GatewayCompleteRequest):
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"Gateway failed: {exc}") from exc
-
-
-@app.post("/generate", response_model=GenerateResponse)
-async def generate(req: GenerateRequest):
-    try:
-        result = await generate_carousel(req)
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=500, detail=f"Generation failed: {exc}") from exc
-
-    return GenerateResponse(
-        title=result["title"],
-        aspectRatio=result["aspectRatio"],
-        width=result["width"],
-        height=result["height"],
-        path=result.get("path"),
-        palette=result["palette"],
-        carousel=result["carousel"],
-    )
-
-
-@app.post("/palette", response_model=PaletteResponse)
-async def palette(req: GeneratePaletteRequest):
-    try:
-        p = await generate_palette(
-            topic=req.topic,
-            language=req.language,
-            model_id=req.model_id,
-        )
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=500, detail=f"Palette failed: {exc}") from exc
-    return PaletteResponse(**p.to_dict())
-
-
-@app.post("/text", response_model=GeneratePostTextResponse)
-async def text(req: GeneratePostTextRequest):
-    try:
-        result = await generate_post_text(req.post_text, model_id=req.model_id)
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=500, detail=f"Generation failed: {exc}") from exc
-    return GeneratePostTextResponse(text=result)

@@ -1,4 +1,4 @@
-"""Model Gateway: Deckva modelId → OpenRouter (platform key). No Ollama / BYOK."""
+"""Model Gateway: Deckva modelId → OpenRouter. Без Ollama / BYOK / локальных весов."""
 
 from __future__ import annotations
 
@@ -20,6 +20,15 @@ def openrouter_api_key() -> str:
     return (os.getenv("OPENROUTER_API_KEY") or "").strip()
 
 
+def require_api_key() -> str:
+    key = openrouter_api_key()
+    if not key:
+        raise RuntimeError(
+            "OPENROUTER_API_KEY не задан. Все LLM-вызовы идут только через OpenRouter."
+        )
+    return key
+
+
 def extract_json(text: str) -> dict[str, Any]:
     text = text.strip()
     if text.startswith("```"):
@@ -37,9 +46,7 @@ def extract_json(text: str) -> dict[str, Any]:
     return data
 
 
-def resolve_slug(model_id: str | None = None, *, open_router_slug: str | None = None) -> tuple[str, str]:
-    if open_router_slug:
-        return model_id or "custom", open_router_slug
+def resolve_slug(model_id: str | None = None) -> tuple[str, str]:
     mid = model_id or DEFAULT_MODEL_ID
     model = get_model(mid)
     return model.model_id, model.open_router_slug
@@ -54,32 +61,16 @@ async def chat(
     top_p: float = 0.92,
     max_tokens: int = 2800,
     model_id: str | None = None,
-    open_router_slug: str | None = None,
     timeout: float = DEFAULT_TIMEOUT,
-    # backward-compat aliases from Ollama era
-    num_predict: int | None = None,
-    model: str | None = None,
 ) -> str:
-    if num_predict is not None:
-        max_tokens = num_predict
-    if model and not model_id and not open_router_slug:
-        # old callers passed ollama model name; ignore and use catalog default
-        model_id = DEFAULT_MODEL_ID
-
-    key = openrouter_api_key()
-    if not key:
-        raise RuntimeError(
-            "OPENROUTER_API_KEY не задан. Укажи ключ платформы в env (BYOK нет)."
-        )
-
-    resolved_id, slug = resolve_slug(model_id, open_router_slug=open_router_slug)
-    messages = [
-        {"role": "system", "content": system},
-        {"role": "user", "content": user},
-    ]
+    key = require_api_key()
+    resolved_id, slug = resolve_slug(model_id)
     payload: dict[str, Any] = {
         "model": slug,
-        "messages": messages,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
         "temperature": temperature,
         "top_p": top_p,
         "max_tokens": max_tokens,
@@ -107,8 +98,9 @@ async def chat(
     if resp.status_code >= 500:
         raise RuntimeError(f"OpenRouter {resp.status_code}: upstream error.")
     if resp.status_code >= 400:
-        detail = resp.text[:300]
-        raise RuntimeError(f"OpenRouter {resp.status_code} ({resolved_id}/{slug}): {detail}")
+        raise RuntimeError(
+            f"OpenRouter {resp.status_code} ({resolved_id}/{slug}): {resp.text[:300]}"
+        )
 
     data = resp.json()
     try:
@@ -132,7 +124,6 @@ async def complete(
     temperature: float = 0.7,
     max_tokens: int = 2800,
 ) -> dict[str, Any]:
-    """Internal gateway shape from credits-models-hub.md."""
     system = ""
     user_parts: list[str] = []
     for m in messages:
@@ -152,21 +143,29 @@ async def complete(
         max_tokens=max_tokens,
         model_id=model_id,
     )
+    result: dict[str, Any] = {
+        "modelId": model_id,
+        "format": response_format,
+        "provider": "openrouter",
+    }
     if as_json:
-        return {"modelId": model_id, "format": response_format, "json": extract_json(text)}
-    return {"modelId": model_id, "format": response_format, "text": text}
+        result["json"] = extract_json(text)
+    else:
+        result["text"] = text
+    return result
 
 
 async def health() -> dict[str, Any]:
+    if not openrouter_api_key():
+        return {
+            "ok": False,
+            "provider": "openrouter",
+            "error": "OPENROUTER_API_KEY missing",
+        }
     key = openrouter_api_key()
-    if not key:
-        return {"ok": False, "provider": "openrouter", "error": "OPENROUTER_API_KEY missing"}
     async with httpx.AsyncClient(base_url=OPENROUTER_BASE, timeout=8.0) as client:
         try:
-            resp = await client.get(
-                "/models",
-                headers={"Authorization": f"Bearer {key}"},
-            )
+            resp = await client.get("/models", headers={"Authorization": f"Bearer {key}"})
             if resp.status_code >= 400:
                 return {
                     "ok": False,
@@ -174,7 +173,10 @@ async def health() -> dict[str, Any]:
                     "status": resp.status_code,
                     "error": resp.text[:200],
                 }
-            count = len(resp.json().get("data", []))
-            return {"ok": True, "provider": "openrouter", "models_visible": count}
+            return {
+                "ok": True,
+                "provider": "openrouter",
+                "models_visible": len(resp.json().get("data", [])),
+            }
         except Exception as exc:  # noqa: BLE001
             return {"ok": False, "provider": "openrouter", "error": str(exc)}

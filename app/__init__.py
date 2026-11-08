@@ -1,1 +1,1 @@
-"""Deckva AI — CORA + OpenRouter model gateway + credits hub."""
+"""Deckva AI — CORA + OpenRouter gateway + credits hub."""

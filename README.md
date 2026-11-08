@@ -1,39 +1,38 @@
 # Deckva AI — CORA
 
-FastAPI-сервис: **CORA Fast** + кредитный хаб + каталог моделей через **один** `OPENROUTER_API_KEY`.
+FastAPI-сервис: **CORA Fast** + кредитный хаб + каталог моделей.
 
+Все LLM-вызовы — только через **OpenRouter** (`OPENROUTER_API_KEY` на сервере).  
 Ollama / локальные веса / BYOK **не используются**.
-
-Спеки: `cora-system.md`, `credits-models-hub.md` (Phase A, минимальный объём).
 
 ## Запуск
 
 ```bash
 export OPENROUTER_API_KEY=sk-or-...
-python -m venv .venv && source .venv/bin/activate  # или Windows activate
 pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 ```
 
-## Что внутри (MVP)
+## Модули
 
 | модуль | роль |
 |--------|------|
 | `app/llm.py` | Model Gateway → OpenRouter |
-| `app/catalog.py` | `AiModelCatalog` + ACL планов |
-| `app/credits.py` | quote → hold → spend / refund (in-memory) |
+| `app/catalog.py` | каталог моделей + ACL планов |
+| `app/credits.py` | quote → hold → spend / refund |
 | `app/cora/` | CORA Fast: plan → execute → assemble |
-| `app/content.py` / `palette.py` / `template.py` | fill + Fabric assemble |
+| `app/content.py` | tool `llm.fill_and_layout` |
+| `app/palette.py` / `template.py` | палитра + Fabric assemble |
 
-Free-кошелёк сидится **150 promo-кредитами** (~3 Economy-генерации).
+Free-кошелёк: **150 promo-кредитов** (~3 Economy-генерации).
 
 ## API
 
 ### `GET /health`
-Проверка сервиса + OpenRouter.
+Сервис + статус OpenRouter.
 
 ### `GET /models?plan=free|starter|pro`
-Каталог моделей, доступных плану (Free = только Economy).
+Каталог моделей плана (Free = Economy).
 
 ### `POST /credits/quote`
 ```json
@@ -46,10 +45,10 @@ Free-кошелёк сидится **150 promo-кредитами** (~3 Economy-
 }
 ```
 
-### `GET /credits/wallet/{userId}?plan=free`
+### `GET /credits/wallet/{userId}`
 Баланс buckets + ledger.
 
-### `POST /cora/run` — основной путь
+### `POST /cora/run` — единственный путь генерации
 ```json
 {
   "userId": "u1",
@@ -66,18 +65,19 @@ Free-кошелёк сидится **150 promo-кредитами** (~3 Economy-
 }
 ```
 
-Ответ: `coraRunId`, сохранённый `CarouselPlan` с object ids, Fabric `carousel`, `credits` (quoted/spent/holdId). При ошибке upstream — **refund hold**.
+Ответ: `coraRunId`, `CarouselPlan` с object ids, Fabric `carousel`, `credits`.  
+При ошибке upstream — **refund hold**.
+
+### `GET /cora/runs/{coraRunId}` / `GET /cora/runs?userId=`
+Статус и история run.
 
 ### `POST /internal/ai/complete`
 Внутренний gateway: `{ modelId, messages, responseFormat }`.
-
-### Legacy
-`POST /generate`, `/palette`, `/text` — те же генерации через OpenRouter (без кредитного обёртывания).
 
 ## Env
 
 | переменная | смысл |
 |------------|--------|
-| `OPENROUTER_API_KEY` | платформенный ключ (обязателен) |
-| `DECKVA_DEFAULT_MODEL_ID` | дефолт, если modelId не передан (`gemini-flash`) |
+| `OPENROUTER_API_KEY` | платформенный ключ (**обязателен**) |
+| `DECKVA_DEFAULT_MODEL_ID` | дефолт каталога (`gemini-flash`) |
 | `OPENROUTER_BASE_URL` | override API base |
