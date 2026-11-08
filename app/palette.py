@@ -62,7 +62,7 @@ def parse_palette(raw: dict[str, Any]) -> Palette:
     )
 
 
-async def generate_palette(*, topic: str, language: str) -> Palette:
+async def generate_palette(*, topic: str, language: str, model_id: str | None = None) -> Palette:
     if not topic.strip():
         raise RuntimeError("Не указан topic для палитры.")
     if not language.strip():
@@ -72,6 +72,7 @@ async def generate_palette(*, topic: str, language: str) -> Palette:
         system=prompts.PALETTE_SYSTEM,
         user=prompts.palette_user(topic=topic, language=language),
         temperature=0.7,
-        num_predict=400,
+        max_tokens=400,
+        model_id=model_id,
     )
     return parse_palette(raw)

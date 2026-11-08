@@ -1,4 +1,4 @@
-"""Генерация текстов карусели и постов через Ollama."""
+"""Генерация текстов карусели и постов через OpenRouter gateway."""
 
 from __future__ import annotations
 
@@ -80,6 +80,7 @@ async def generate_carousel_raw(
     slides_count: int,
     language: str,
     handle: str,
+    model_id: str | None = None,
 ) -> dict[str, Any]:
     if not topic.strip():
         raise RuntimeError("Не указан topic.")
@@ -99,7 +100,8 @@ async def generate_carousel_raw(
             handle=handle,
         ),
         temperature=0.85,
-        num_predict=2800,
+        max_tokens=2800,
+        model_id=model_id,
     )
 
 
@@ -110,6 +112,7 @@ async def generate_extra_slides(
     language: str,
     handle: str,
     existing_headings: list[str],
+    model_id: str | None = None,
 ) -> dict[str, Any]:
     if count < 1:
         raise RuntimeError("count для догенерации должен быть >= 1.")
@@ -128,7 +131,8 @@ async def generate_extra_slides(
             existing_headings=existing_headings,
         ),
         temperature=0.9,
-        num_predict=1600,
+        max_tokens=1600,
+        model_id=model_id,
     )
 
 
@@ -139,6 +143,7 @@ async def normalize_slides(
     slides_count: int,
     language: str,
     handle: str,
+    model_id: str | None = None,
 ) -> list[SlideContent]:
     out = parse_slides(raw.get("slides"), slides_count)
 
@@ -150,6 +155,7 @@ async def normalize_slides(
             language=language,
             handle=handle,
             existing_headings=[s.heading for s in out],
+            model_id=model_id,
         )
         extra = parse_slides(extra_raw.get("slides"), need)
         if len(extra) < need:
@@ -157,7 +163,7 @@ async def normalize_slides(
         out.extend(extra[:need])
 
     if not out:
-        raise RuntimeError("ИИ не вернул слайды. Проверь Ollama / qwen2.5:3b.")
+        raise RuntimeError("ИИ не вернул слайды. Проверь OPENROUTER_API_KEY / modelId.")
     if len(out) < slides_count:
         raise RuntimeError(f"ИИ вернул {len(out)} из {slides_count} слайдов.")
 
@@ -167,7 +173,7 @@ async def normalize_slides(
     return out
 
 
-async def generate_post_text(post_text: str) -> str:
+async def generate_post_text(post_text: str, *, model_id: str | None = None) -> str:
     if not post_text.strip():
         raise RuntimeError("Не указан post_text.")
     return await chat(
@@ -175,5 +181,6 @@ async def generate_post_text(post_text: str) -> str:
         user=prompts.post_user(post_text),
         as_json=False,
         temperature=0.85,
-        num_predict=1200,
+        max_tokens=1200,
+        model_id=model_id,
     )

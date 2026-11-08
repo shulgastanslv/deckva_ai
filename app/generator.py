@@ -44,6 +44,7 @@ async def generate_carousel(req: GenerateRequest) -> dict[str, Any]:
         slides_count=req.slides_count,
         language=req.language,
         handle=req.handle,
+        model_id=req.model_id,
     )
     slides = await normalize_slides(
         raw,
@@ -51,6 +52,7 @@ async def generate_carousel(req: GenerateRequest) -> dict[str, Any]:
         slides_count=req.slides_count,
         language=req.language,
         handle=req.handle,
+        model_id=req.model_id,
     )
     content = CarouselContent(
         title=require_str(raw.get("title"), "title"),
@@ -61,7 +63,11 @@ async def generate_carousel(req: GenerateRequest) -> dict[str, Any]:
         slides=slides,
     )
 
-    palette = await generate_palette(topic=req.topic, language=req.language)
+    palette = await generate_palette(
+        topic=req.topic,
+        language=req.language,
+        model_id=req.model_id,
+    )
     seed = int(time.time() * 1000) % 2_147_483_647
     carousel = build_carousel(content, aspect_ratio=req.aspect_ratio, palette=palette, seed=seed)
 
