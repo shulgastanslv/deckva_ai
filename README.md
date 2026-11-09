@@ -1,70 +1,83 @@
-# Deckva Carousel AI
+# Deckva AI — CORA
 
-FastAPI + Ollama `qwen2.5:3b` → Fabric JSON карусели + AI-палитра.
+FastAPI-сервис: **CORA Fast** + кредитный хаб + каталог моделей.
 
-Все параметры запросов обязательны (без дефолтов).
+Все LLM-вызовы — только через **OpenRouter** (`OPENROUTER_API_KEY` на сервере).  
+Ollama / локальные веса / BYOK **не используются**.
 
 ## Запуск
 
 ```bash
-ollama serve
-.\.venv\Scripts\activate
+export OPENROUTER_API_KEY=sk-or-...
+pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 ```
 
 ## Модули
 
-| файл | роль |
-|------|------|
-| `app/llm.py` | тонкий клиент Ollama |
-| `app/prompts.py` | системные/user промпты |
-| `app/content.py` | тексты карусели и поста |
-| `app/palette.py` | AI-палитра |
-| `app/template.py` | Fabric-шаблоны по палитре |
-| `app/generator.py` | оркестрация |
+| модуль | роль |
+|--------|------|
+| `app/llm.py` | Model Gateway → OpenRouter |
+| `app/catalog.py` | каталог моделей + ACL планов |
+| `app/credits.py` | quote → hold → spend / refund |
+| `app/cora/` | CORA Fast: plan → execute → assemble |
+| `app/content.py` | tool `llm.fill_and_layout` |
+| `app/palette.py` / `template.py` | палитра + Fabric assemble |
+
+Free-кошелёк: **150 promo-кредитов** (~3 Economy-генерации).
 
 ## API
 
-### `POST /generate`
+### `GET /health`
+Сервис + статус OpenRouter.
 
+### `GET /models?plan=free|starter|pro`
+Каталог моделей плана (Free = Economy).
+
+### `POST /credits/quote`
 ```json
 {
+  "userId": "u1",
+  "modelId": "gemini-flash",
+  "slides": 7,
+  "mode": "fast",
+  "plan": "free"
+}
+```
+
+### `GET /credits/wallet/{userId}`
+Баланс buckets + ledger.
+
+### `POST /cora/run` — единственный путь генерации
+```json
+{
+  "userId": "u1",
   "topic": "как фитнес-тренеру вести блог",
-  "aspect_ratio": "4:5",
-  "slides_count": 7,
   "language": "ru",
-  "handle": "@ekoreshilov",
-  "cover": "https://example.com/photo.jpg",
-  "save": true
+  "ratio": "4:5",
+  "slidesCount": 7,
+  "handle": "@coach",
+  "cover": "",
+  "mode": "fast",
+  "plan": "free",
+  "modelId": "gemini-flash",
+  "save": false
 }
 ```
 
-Ответ включает `palette` и `carousel` (Fabric slides).
+Ответ: `coraRunId`, `CarouselPlan` с object ids, Fabric `carousel`, `credits`.  
+При ошибке upstream — **refund hold**.
 
-- `cover` — URL/путь на 1-м слайде; `""` = серый placeholder. Сервер вшивает `data:` URL.
-- `category` — одно слово от ИИ (не в запросе).
+### `GET /cora/runs/{coraRunId}` / `GET /cora/runs?userId=`
+Статус и история run.
 
-### `POST /palette`
+### `POST /internal/ai/complete`
+Внутренний gateway: `{ modelId, messages, responseFormat }`.
 
-```json
-{ "topic": "как фитнес-тренеру вести блог", "language": "ru" }
-```
+## Env
 
-```json
-{
-  "name": "soft_blush",
-  "bg": "#FFFFFF",
-  "text": "#111111",
-  "muted": "#9A9A9A",
-  "accent": "#F6C1C0",
-  "accent_text": "#2A2A2A",
-  "grid": "#CFCFCF",
-  "photo": "#C8C8C8"
-}
-```
-
-### `POST /text`
-
-```json
-{ "post_text": "черновик поста..." }
-```
+| переменная | смысл |
+|------------|--------|
+| `OPENROUTER_API_KEY` | платформенный ключ (**обязателен**) |
+| `DECKVA_DEFAULT_MODEL_ID` | дефолт каталога (`gemini-flash`) |
+| `OPENROUTER_BASE_URL` | override API base |

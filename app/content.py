@@ -1,11 +1,11 @@
-"""Генерация текстов карусели и постов через Ollama."""
+"""Tool `llm.fill_and_layout`: тексты карусели через Model Gateway."""
 
 from __future__ import annotations
 
 from typing import Any
 
 from app import prompts
-from app.llm import chat, chat_json
+from app.llm import chat_json
 from app.schemas import SlideContent
 
 VALID_LAYOUTS = {"cover", "statement", "orange_quote", "tips", "funnel", "results", "cta"}
@@ -74,13 +74,30 @@ def parse_slides(slides_raw: Any, slides_count: int) -> list[SlideContent]:
     return out
 
 
-async def generate_carousel_raw(
+def plan_briefs_text(plan: dict[str, Any]) -> str:
+    lines: list[str] = []
+    for slide in plan.get("slides", []):
+        idx = slide.get("index", 0)
+        role = slide.get("role", "")
+        layout = slide.get("layout", "")
+        lines.append(f"- slide {idx} role={role} layout={layout}")
+        for obj in slide.get("objects", []):
+            if obj.get("type") != "text":
+                continue
+            lines.append(f"  · {obj.get('id')} [{obj.get('role')}]: {obj.get('brief', '')}")
+    return "\n".join(lines)
+
+
+async def fill_and_layout(
     *,
     topic: str,
     slides_count: int,
     language: str,
     handle: str,
+    model_id: str,
+    plan: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    """EXECUTE job: возвращает сырой carousel JSON от модели."""
     if not topic.strip():
         raise RuntimeError("Не указан topic.")
     if not handle.strip():
@@ -90,6 +107,7 @@ async def generate_carousel_raw(
     if slides_count < 4:
         raise RuntimeError("slides_count должен быть >= 4.")
 
+    briefs = plan_briefs_text(plan) if plan else ""
     return await chat_json(
         system=prompts.CAROUSEL_SYSTEM,
         user=prompts.carousel_user(
@@ -97,9 +115,11 @@ async def generate_carousel_raw(
             language=language,
             slides_count=slides_count,
             handle=handle,
+            plan_briefs=briefs,
         ),
         temperature=0.85,
-        num_predict=2800,
+        max_tokens=2800,
+        model_id=model_id,
     )
 
 
@@ -110,14 +130,10 @@ async def generate_extra_slides(
     language: str,
     handle: str,
     existing_headings: list[str],
+    model_id: str,
 ) -> dict[str, Any]:
     if count < 1:
         raise RuntimeError("count для догенерации должен быть >= 1.")
-    if not handle.strip():
-        raise RuntimeError("Для догенерации нужен handle.")
-    if not existing_headings:
-        raise RuntimeError("Нет существующих заголовков для догенерации.")
-
     return await chat_json(
         system=prompts.CAROUSEL_SYSTEM,
         user=prompts.carousel_extra_user(
@@ -128,7 +144,8 @@ async def generate_extra_slides(
             existing_headings=existing_headings,
         ),
         temperature=0.9,
-        num_predict=1600,
+        max_tokens=1600,
+        model_id=model_id,
     )
 
 
@@ -139,6 +156,7 @@ async def normalize_slides(
     slides_count: int,
     language: str,
     handle: str,
+    model_id: str,
 ) -> list[SlideContent]:
     out = parse_slides(raw.get("slides"), slides_count)
 
@@ -150,6 +168,7 @@ async def normalize_slides(
             language=language,
             handle=handle,
             existing_headings=[s.heading for s in out],
+            model_id=model_id,
         )
         extra = parse_slides(extra_raw.get("slides"), need)
         if len(extra) < need:
@@ -157,7 +176,7 @@ async def normalize_slides(
         out.extend(extra[:need])
 
     if not out:
-        raise RuntimeError("ИИ не вернул слайды. Проверь Ollama / qwen2.5:3b.")
+        raise RuntimeError("ИИ не вернул слайды.")
     if len(out) < slides_count:
         raise RuntimeError(f"ИИ вернул {len(out)} из {slides_count} слайдов.")
 
@@ -165,15 +184,3 @@ async def normalize_slides(
     out[0].layout = "cover"
     out[-1].layout = "cta"
     return out
-
-
-async def generate_post_text(post_text: str) -> str:
-    if not post_text.strip():
-        raise RuntimeError("Не указан post_text.")
-    return await chat(
-        system=prompts.POST_SYSTEM,
-        user=prompts.post_user(post_text),
-        as_json=False,
-        temperature=0.85,
-        num_predict=1200,
-    )

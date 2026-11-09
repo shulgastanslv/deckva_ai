@@ -1,16 +1,32 @@
-"""Тонкий клиент Ollama Chat."""
+"""Model Gateway: Deckva modelId → OpenRouter. Без Ollama / BYOK / локальных весов."""
 
 from __future__ import annotations
 
 import json
+import os
 import re
 from typing import Any
 
 import httpx
 
-OLLAMA_BASE = "http://127.0.0.1:11434"
-MODEL = "qwen2.5:3b"
-DEFAULT_TIMEOUT = 300.0
+from app.catalog import get_model
+
+OPENROUTER_BASE = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1").rstrip("/")
+DEFAULT_TIMEOUT = float(os.getenv("OPENROUTER_TIMEOUT", "180"))
+DEFAULT_MODEL_ID = os.getenv("DECKVA_DEFAULT_MODEL_ID", "gemini-flash")
+
+
+def openrouter_api_key() -> str:
+    return (os.getenv("OPENROUTER_API_KEY") or "").strip()
+
+
+def require_api_key() -> str:
+    key = openrouter_api_key()
+    if not key:
+        raise RuntimeError(
+            "OPENROUTER_API_KEY не задан. Все LLM-вызовы идут только через OpenRouter."
+        )
+    return key
 
 
 def extract_json(text: str) -> dict[str, Any]:
@@ -30,6 +46,12 @@ def extract_json(text: str) -> dict[str, Any]:
     return data
 
 
+def resolve_slug(model_id: str | None = None) -> tuple[str, str]:
+    mid = model_id or DEFAULT_MODEL_ID
+    model = get_model(mid)
+    return model.model_id, model.open_router_slug
+
+
 async def chat(
     *,
     system: str,
@@ -37,42 +59,56 @@ async def chat(
     as_json: bool = True,
     temperature: float = 0.85,
     top_p: float = 0.92,
-    num_predict: int = 2800,
-    model: str = MODEL,
-    base_url: str = OLLAMA_BASE,
+    max_tokens: int = 2800,
+    model_id: str | None = None,
     timeout: float = DEFAULT_TIMEOUT,
 ) -> str:
+    key = require_api_key()
+    resolved_id, slug = resolve_slug(model_id)
     payload: dict[str, Any] = {
-        "model": model,
-        "stream": False,
-        "options": {
-            "temperature": temperature,
-            "top_p": top_p,
-            "num_predict": num_predict,
-        },
+        "model": slug,
         "messages": [
             {"role": "system", "content": system},
             {"role": "user", "content": user},
         ],
+        "temperature": temperature,
+        "top_p": top_p,
+        "max_tokens": max_tokens,
     }
     if as_json:
-        payload["format"] = "json"
+        payload["response_format"] = {"type": "json_object"}
 
-    async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as client:
+    headers = {
+        "Authorization": f"Bearer {key}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": os.getenv("OPENROUTER_HTTP_REFERER", "https://deckva.app"),
+        "X-Title": os.getenv("OPENROUTER_APP_TITLE", "Deckva CORA"),
+    }
+
+    async with httpx.AsyncClient(base_url=OPENROUTER_BASE, timeout=timeout) as client:
         try:
-            resp = await client.post("/api/chat", json=payload)
-            resp.raise_for_status()
+            resp = await client.post("/chat/completions", json=payload, headers=headers)
         except httpx.ConnectError as exc:
-            raise RuntimeError(
-                "Ollama недоступна. Запусти `ollama serve` и модель qwen2.5:3b."
-            ) from exc
+            raise RuntimeError("OpenRouter недоступен (connect error).") from exc
         except httpx.ReadTimeout as exc:
-            raise RuntimeError("Ollama не успела ответить. Повтори запрос.") from exc
+            raise RuntimeError("OpenRouter не успел ответить. Повтори запрос.") from exc
+
+    if resp.status_code == 429:
+        raise RuntimeError("OpenRouter 429: rate limit. Повтори позже.")
+    if resp.status_code >= 500:
+        raise RuntimeError(f"OpenRouter {resp.status_code}: upstream error.")
+    if resp.status_code >= 400:
+        raise RuntimeError(
+            f"OpenRouter {resp.status_code} ({resolved_id}/{slug}): {resp.text[:300]}"
+        )
 
     data = resp.json()
-    message = data.get("message", {}).get("content", "")
+    try:
+        message = data["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, TypeError) as exc:
+        raise RuntimeError(f"Пустой/битый ответ OpenRouter: {data}") from exc
     if not isinstance(message, str) or not message.strip():
-        raise RuntimeError(f"Пустой ответ Ollama: {data}")
+        raise RuntimeError(f"Пустой ответ OpenRouter: {data}")
     return message.strip()
 
 
@@ -80,12 +116,67 @@ async def chat_json(**kwargs: Any) -> dict[str, Any]:
     return extract_json(await chat(as_json=True, **kwargs))
 
 
-async def health(base_url: str = OLLAMA_BASE, model: str = MODEL) -> dict[str, Any]:
-    async with httpx.AsyncClient(base_url=base_url, timeout=5.0) as client:
+async def complete(
+    *,
+    model_id: str,
+    messages: list[dict[str, str]],
+    response_format: str | None = "carousel_v1",
+    temperature: float = 0.7,
+    max_tokens: int = 2800,
+) -> dict[str, Any]:
+    system = ""
+    user_parts: list[str] = []
+    for m in messages:
+        role = m.get("role", "user")
+        content = m.get("content", "")
+        if role == "system":
+            system = content if not system else f"{system}\n{content}"
+        else:
+            user_parts.append(content)
+    user = "\n\n".join(user_parts) if user_parts else ""
+    as_json = response_format is not None
+    text = await chat(
+        system=system or "You are a helpful assistant. Return JSON only.",
+        user=user,
+        as_json=as_json,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        model_id=model_id,
+    )
+    result: dict[str, Any] = {
+        "modelId": model_id,
+        "format": response_format,
+        "provider": "openrouter",
+    }
+    if as_json:
+        result["json"] = extract_json(text)
+    else:
+        result["text"] = text
+    return result
+
+
+async def health() -> dict[str, Any]:
+    if not openrouter_api_key():
+        return {
+            "ok": False,
+            "provider": "openrouter",
+            "error": "OPENROUTER_API_KEY missing",
+        }
+    key = openrouter_api_key()
+    async with httpx.AsyncClient(base_url=OPENROUTER_BASE, timeout=8.0) as client:
         try:
-            tags = await client.get("/api/tags")
-            tags.raise_for_status()
-            names = [m.get("name") for m in tags.json().get("models", [])]
-            return {"ok": True, "models": names, "has_model": any(model in n for n in names)}
+            resp = await client.get("/models", headers={"Authorization": f"Bearer {key}"})
+            if resp.status_code >= 400:
+                return {
+                    "ok": False,
+                    "provider": "openrouter",
+                    "status": resp.status_code,
+                    "error": resp.text[:200],
+                }
+            return {
+                "ok": True,
+                "provider": "openrouter",
+                "models_visible": len(resp.json().get("data", [])),
+            }
         except Exception as exc:  # noqa: BLE001
-            return {"ok": False, "error": str(exc), "models": [], "has_model": False}
+            return {"ok": False, "provider": "openrouter", "error": str(exc)}

@@ -1,4 +1,4 @@
-"""Промпты для генерации контента."""
+"""Промпты CORA execute (fill_and_layout + palette)."""
 
 CAROUSEL_SYSTEM = """Ты копирайтер экспертных Threads/Pinterest-каруселей.
 Пиши коротко и по делу. Язык = язык темы. Если топ — составляй топ.
@@ -36,19 +36,8 @@ CAROUSEL_SYSTEM = """Ты копирайтер экспертных Threads/Pint
 - title и category обязательны; category — одно слово без пробелов.
 - Тексты уникальные под тему.
 - items без стрелок в начале.
-- Без счётчиков слайдов."""
-
-
-POST_SYSTEM = """Ты копирайтер вирусных постов для Threads и Pinterest.
-Цель — вовлекающий пост: крючок → тезисы → вопрос к аудитории.
-
-Правила:
-1. Крючок: первая строка цепляет интерес или боль, без приветствий.
-2. Тело: короткие абзацы (2–3 строки), ключевые мысли списком.
-3. Финал: вопрос или призыв к комментарию.
-4. Без хештегов, эмодзи и длинных тире. Живой экспертный язык.
-
-Верни ТОЛЬКО готовый текст поста, без пояснений."""
+- Без счётчиков слайдов.
+- Не выдумывай URL картинок."""
 
 
 PALETTE_SYSTEM = """Ты арт-директор. Под тему карусели подбери спокойную пастельную палитру.
@@ -74,13 +63,15 @@ PALETTE_SYSTEM = """Ты арт-директор. Под тему карусел
 - grid и muted светло-серые, photo — нейтральный placeholder."""
 
 
-def carousel_user(*, topic: str, language: str, slides_count: int, handle: str) -> str:
+def carousel_user(*, topic: str, language: str, slides_count: int, handle: str, plan_briefs: str = "") -> str:
     lang = "русском" if language.startswith("ru") else "английском"
+    extra = f"\nПлан объектов (briefs):\n{plan_briefs}\n" if plan_briefs else ""
     return (
         f"Тема: {topic}\n"
         f"Язык: {lang}\n"
         f"Число слайдов: ровно {slides_count}\n"
         f"Хэндл (контекст): {handle}\n"
+        f"{extra}"
         "Сгенерируй карусель. category — одно слово. "
         "Первый layout=cover, последний layout=cta."
     )
@@ -104,10 +95,6 @@ def carousel_extra_user(
         f"Уже есть заголовки (не повторяй):\n{used}\n"
         'Верни JSON: {"slides":[...]} с layout и heading.'
     )
-
-
-def post_user(post_text: str) -> str:
-    return f"Исходный текст:\n{post_text}"
 
 
 def palette_user(*, topic: str, language: str) -> str:

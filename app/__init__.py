@@ -1,1 +1,1 @@
-"""Deckva AI — carousel generator via Ollama."""
+"""Deckva AI — CORA + OpenRouter gateway + credits hub."""
