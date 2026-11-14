@@ -5,7 +5,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 AspectRatio = Literal["1:1", "4:5", "9:16", "16:9"]
-PlanId = Literal["free", "starter", "pro"]
+PlanId = Literal["free", "pro"]
 CoraMode = Literal["fast", "thinking"]
 CoraStatus = Literal["queued", "planning", "executing", "assembling", "done", "failed"]
 SlideLayout = Literal[
@@ -28,9 +28,25 @@ class BrandKit(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class CoraAttachment(BaseModel):
+    """Client attach: text notes → seed; images → cover / mid-slide photos."""
+
+    name: str = Field("", max_length=256)
+    kind: Literal["image", "text"] = "image"
+    data_url: str | None = Field(None, alias="dataUrl")
+    text: str | None = Field(None, max_length=8000)
+    role: str | None = Field(
+        None,
+        description="Optional hint: cover | slide",
+        max_length=32,
+    )
+
+    model_config = {"populate_by_name": True}
+
+
 class CoraRunRequest(BaseModel):
     user_id: str = Field(..., alias="userId", min_length=1, max_length=128)
-    topic: str = Field(..., min_length=2, max_length=300)
+    topic: str = Field(..., min_length=2, max_length=800)
     language: str = Field(..., min_length=2, max_length=8)
     ratio: AspectRatio
     slides_count: int = Field(..., alias="slidesCount", ge=4, le=10)
@@ -41,27 +57,21 @@ class CoraRunRequest(BaseModel):
     model_id: str | None = Field(None, alias="modelId")
     brand_kit: BrandKit | None = Field(None, alias="brandKit")
     seed_text: str | None = Field(None, alias="seedText", max_length=8000)
+    skill_id: str | None = Field(
+        None,
+        alias="skillId",
+        description="launch|howto|offer|tips|story|comparison",
+        max_length=32,
+    )
+    attachments: list[CoraAttachment] = Field(default_factory=list)
+    stock_photos: bool = Field(
+        True,
+        alias="stockPhotos",
+        description="Искать фото в Unsplash по image_prompt, если своих картинок нет",
+    )
     save: bool = False
 
     model_config = {"populate_by_name": True}
-
-
-class CreditsQuoteRequest(BaseModel):
-    user_id: str = Field(..., alias="userId")
-    model_id: str = Field(..., alias="modelId")
-    slides: int = Field(..., ge=4, le=10)
-    mode: CoraMode = "fast"
-    plan: PlanId = "free"
-
-    model_config = {"populate_by_name": True}
-
-
-class SetPlanRequest(BaseModel):
-    user_id: str = Field(..., alias="userId")
-    plan: PlanId
-
-    model_config = {"populate_by_name": True}
-
 
 class GatewayCompleteRequest(BaseModel):
     model_id: str = Field(..., alias="modelId")
@@ -106,15 +116,6 @@ class CarouselContent(BaseModel):
     slides: list[SlideContent]
 
 
-class CreditsInfo(BaseModel):
-    quoted: int
-    spent: int | None = None
-    holdId: str | None = None
-    spendLedgerId: str | None = None
-    refunded: bool = False
-    wallet: dict[str, int]
-
-
 class CoraRunResponse(BaseModel):
     coraRunId: str
     status: CoraStatus
@@ -129,6 +130,5 @@ class CoraRunResponse(BaseModel):
     path: str | None = None
     palette: PaletteResponse | None = None
     carousel: dict[str, Any] | None = None
-    credits: CreditsInfo
     error: str | None = None
     llmProvider: str | None = None

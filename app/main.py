@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+from pathlib import Path
+
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
-from app import credits
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+
 from app.catalog import list_models, resolve_model_id
 from app.cora import get_run, list_runs_for_user, run_cora_fast
 from app.llm import complete as gateway_complete
@@ -11,18 +15,17 @@ from app.llm import health
 from app.schemas import (
     CoraRunRequest,
     CoraRunResponse,
-    CreditsQuoteRequest,
     GatewayCompleteRequest,
-    SetPlanRequest,
 )
 
 app = FastAPI(
     title="Deckva AI — CORA",
     description=(
-        "CORA Fast + credits hub + OpenRouter gateway. "
-        "Единый путь генерации: POST /cora/run. Без Ollama / BYOK."
+        "CORA Fast + OpenRouter gateway. "
+        "Единый путь генерации: POST /cora/run. Без Ollama / BYOK. "
+        "Подписка / лимит генераций — на Next.js сервере."
     ),
-    version="0.5.0",
+    version="0.7.0",
 )
 
 app.add_middleware(
@@ -34,9 +37,6 @@ app.add_middleware(
 
 
 def _http_for_cora_error(msg: str) -> int:
-    low = msg.lower()
-    if "кредит" in low or "credits" in low or "недостаточно" in low:
-        return 402
     if "не даёт доступ" in msg or "отключена" in msg or "Неизвестная модель" in msg:
         return 403
     return 503
@@ -53,7 +53,7 @@ async def healthcheck():
 
 
 @app.get("/models")
-async def models(plan: str = Query("free", pattern="^(free|starter|pro)$")):
+async def models(plan: str = Query("free", pattern="^(free|pro)$")):
     rows = list_models(plan=plan)  # type: ignore[arg-type]
     return {
         "plan": plan,
@@ -62,62 +62,13 @@ async def models(plan: str = Query("free", pattern="^(free|starter|pro)$")):
                 "modelId": m.model_id,
                 "displayName": m.display_name,
                 "tier": m.tier,
-                "baseCredits": m.base_credits,
                 "openRouterSlug": m.open_router_slug,
                 "enabled": m.enabled,
+                "isFree": False,
+                "creditCost": m.credit_cost,
             }
             for m in rows
         ],
-    }
-
-
-@app.get("/credits/wallet/{user_id}")
-async def wallet(user_id: str, plan: str = Query("free", pattern="^(free|starter|pro)$")):
-    w = credits.ensure_wallet(user_id, plan=plan)  # type: ignore[arg-type]
-    return {
-        "userId": user_id,
-        "plan": w.plan,
-        "balance": credits.balance_of(user_id),
-        "ledger": [
-            {
-                "id": e.id,
-                "kind": e.kind,
-                "amount": e.amount,
-                "bucket": e.bucket,
-                "generationId": e.generation_id,
-                "holdId": e.hold_id,
-                "createdAt": e.created_at,
-                "meta": e.meta,
-            }
-            for e in credits.ledger_for(user_id)
-        ],
-    }
-
-
-@app.post("/credits/quote")
-async def quote(req: CreditsQuoteRequest):
-    credits.ensure_wallet(req.user_id, plan=req.plan)
-    try:
-        model_id = resolve_model_id(req.plan, req.model_id)
-    except (RuntimeError, PermissionError) as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    q = credits.quote(model_id=model_id, slides=req.slides, mode=req.mode)
-    bal = credits.balance_of(req.user_id)
-    return {
-        **q,
-        "modelId": model_id,
-        "wallet": bal,
-        "affordable": bal["total"] >= q["credits"],
-    }
-
-
-@app.post("/credits/plan")
-async def set_plan(req: SetPlanRequest):
-    wallet = credits.set_plan(req.user_id, req.plan)
-    return {
-        "userId": wallet.user_id,
-        "plan": wallet.plan,
-        "balance": credits.balance_of(req.user_id),
     }
 
 

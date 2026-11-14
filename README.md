@@ -1,9 +1,10 @@
 # Deckva AI — CORA
 
-FastAPI-сервис: **CORA Fast** + кредитный хаб + каталог моделей.
+FastAPI-сервис: **CORA Fast** + каталог моделей + OpenRouter gateway.
 
 Все LLM-вызовы — только через **OpenRouter** (`OPENROUTER_API_KEY` на сервере).  
-Ollama / локальные веса / BYOK **не используются**.
+Ollama / локальные веса / BYOK **не используются**.  
+Кредиты / биллинг — на **Next.js сервере**, здесь только генерация.
 
 ## Запуск
 
@@ -19,34 +20,18 @@ uvicorn app.main:app --reload --port 8000
 |--------|------|
 | `app/llm.py` | Model Gateway → OpenRouter |
 | `app/catalog.py` | каталог моделей + ACL планов |
-| `app/credits.py` | quote → hold → spend / refund |
 | `app/cora/` | CORA Fast: plan → execute → assemble |
 | `app/content.py` | tool `llm.fill_and_layout` |
 | `app/palette.py` / `template.py` | палитра + Fabric assemble |
-
-Free-кошелёк: **150 promo-кредитов** (~3 Economy-генерации).
+| `app/stock_photos.py` | Unsplash search по `image_prompt` |
 
 ## API
 
 ### `GET /health`
 Сервис + статус OpenRouter.
 
-### `GET /models?plan=free|starter|pro`
-Каталог моделей плана (Free = Economy).
-
-### `POST /credits/quote`
-```json
-{
-  "userId": "u1",
-  "modelId": "gemini-flash",
-  "slides": 7,
-  "mode": "fast",
-  "plan": "free"
-}
-```
-
-### `GET /credits/wallet/{userId}`
-Баланс buckets + ledger.
+### `GET /models?plan=free|pro`
+Полный каталог моделей (лимит 3 бесплатных генераций на любом плане — в Next.js).
 
 ### `POST /cora/run` — единственный путь генерации
 ```json
@@ -65,8 +50,7 @@ Free-кошелёк: **150 promo-кредитов** (~3 Economy-генераци
 }
 ```
 
-Ответ: `coraRunId`, `CarouselPlan` с object ids, Fabric `carousel`, `credits`.  
-При ошибке upstream — **refund hold**.
+Ответ: `coraRunId`, `CarouselPlan` с object ids, Fabric `carousel`.
 
 ### `GET /cora/runs/{coraRunId}` / `GET /cora/runs?userId=`
 Статус и история run.
@@ -81,3 +65,11 @@ Free-кошелёк: **150 promo-кредитов** (~3 Economy-генераци
 | `OPENROUTER_API_KEY` | платформенный ключ (**обязателен**) |
 | `DECKVA_DEFAULT_MODEL_ID` | дефолт каталога (`gemini-flash`) |
 | `OPENROUTER_BASE_URL` | override API base |
+| `UNSPLASH_ACCESS_KEY` | поиск обложек/фото в Unsplash (**нужен** для автофото) |
+| `DECKVA_STOCK_PHOTOS` | `1`/`0` — автоподбор Unsplash по `image_prompt` (по умолчанию вкл., если есть ключ) |
+
+### Сток-фото в карусели
+
+CORA просит у модели `image_prompt` (english search query). Если своих картинок в `cover` / `attachments` нет и задан `UNSPLASH_ACCESS_KEY`, сервис сам ищет фото в Unsplash и вставляет на cover + 1–2 mid-слайда.
+
+Отключить на запрос: `"stockPhotos": false` в `POST /cora/run`.

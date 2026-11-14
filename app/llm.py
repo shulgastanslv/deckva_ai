@@ -59,7 +59,7 @@ async def chat(
     as_json: bool = True,
     temperature: float = 0.85,
     top_p: float = 0.92,
-    max_tokens: int = 2800,
+    max_tokens: int = 4096,
     model_id: str | None = None,
     timeout: float = DEFAULT_TIMEOUT,
 ) -> str:
@@ -104,12 +104,33 @@ async def chat(
 
     data = resp.json()
     try:
-        message = data["choices"][0]["message"]["content"]
+        choice = data["choices"][0]
+        message_obj = choice["message"]
     except (KeyError, IndexError, TypeError) as exc:
         raise RuntimeError(f"Пустой/битый ответ OpenRouter: {data}") from exc
-    if not isinstance(message, str) or not message.strip():
-        raise RuntimeError(f"Пустой ответ OpenRouter: {data}")
-    return message.strip()
+
+    content = message_obj.get("content") if isinstance(message_obj, dict) else None
+    if isinstance(content, str) and content.strip():
+        return content.strip()
+
+    # Some free/reasoning models dump JSON into `reasoning` and leave content empty.
+    reasoning = message_obj.get("reasoning") if isinstance(message_obj, dict) else None
+    if isinstance(reasoning, str) and "{" in reasoning:
+        match = re.search(r"\{.*\}", reasoning, re.DOTALL)
+        if match:
+            return match.group(0).strip()
+
+    finish = choice.get("finish_reason") or choice.get("native_finish_reason")
+    model_name = data.get("model") or slug
+    if finish == "length":
+        raise RuntimeError(
+            f"Модель {model_name} обрезала ответ (finish_reason=length) без JSON. "
+            "Выбери более крупную модель (Gemini Flash / Claude Sonnet)."
+        )
+    raise RuntimeError(
+        f"Пустой ответ OpenRouter ({model_name}). "
+        "Модель не вернула content — попробуй Gemini Flash."
+    )
 
 
 async def chat_json(**kwargs: Any) -> dict[str, Any]:

@@ -228,14 +228,20 @@ def layout_cover(
     index: int,
     with_grid: bool,
     cover_src: str,
+    photo_ratio: float = 0.48,
 ) -> dict[str, Any]:
-    photo_h = lay.h * 0.48
+    ratio = max(0.32, min(0.58, float(photo_ratio or 0.48)))
+    photo_h = lay.h * ratio
     if cover_src.strip():
         objs: list[dict[str, Any]] = [
             image(cover_src.strip(), left=0, top=0, width=lay.w, height=photo_h, swibp_slot="image")
         ]
+        handle_fill = "#FFFFFF"
+        counter_fill = "#FFFFFF"
     else:
         objs = [rect(left=0, top=0, width=lay.w, height=photo_h, fill=palette.photo, swibp_slot="image")]
+        handle_fill = palette.text
+        counter_fill = palette.text
 
     if with_grid:
         objs.extend(_grid(lay.w, lay.h, lay.step, palette, top=photo_h, height=lay.h - photo_h))
@@ -248,7 +254,7 @@ def layout_cover(
             width=lay.w * 0.45,
             font_size=SIZE_META,
             font_family=FONT,
-            fill="#FFFFFF",
+            fill=handle_fill,
             font_weight="600",
             text_align="left",
             line_height=LINE_HEIGHT,
@@ -256,7 +262,7 @@ def layout_cover(
             swibp_role="handle",
         )
     )
-    objs.append(_counter(index, lay, fill="#FFFFFF"))
+    objs.append(_counter(index, lay, fill=counter_fill))
 
     heading = _clip(s.heading, 120)
     body = _clip(s.body, 200) if s.body else ""
@@ -443,6 +449,19 @@ def layout_cta(
     return slide(palette.bg, objs, width=lay.w, height=lay.h)
 
 
+def _with_grid_for(index: int, total: int, grid_mode: str) -> bool:
+    is_first = index == 0
+    is_last = index == total - 1
+    if grid_mode == "none":
+        return False
+    if grid_mode == "all":
+        return True
+    if grid_mode == "cover_only":
+        return is_first
+    # edges (default)
+    return is_first or is_last
+
+
 def build_slide(
     s: SlideContent,
     *,
@@ -454,28 +473,46 @@ def build_slide(
     cover_src: str,
     palette: Palette,
     rng: random.Random,
+    design: dict[str, Any] | None = None,
+    slide_photo: str = "",
 ) -> dict[str, Any]:
-    is_first = index == 0
+    design = design or {}
+    has_cover = bool(design.get("hasCover", True))
+    grid_mode = str(design.get("gridMode") or "edges")
+    accent_bias = float(design.get("accentBias") or 0.45)
+    photo_ratio = float(design.get("photoRatio") or 0.48)
     is_last = index == total - 1
-    with_grid = is_first or is_last
+    with_grid = _with_grid_for(index, total, grid_mode)
+    photo = (slide_photo or "").strip() or ((cover_src or "").strip() if index == 0 else "")
 
     layout = s.layout
-    if is_first:
-        layout = "cover"
+    if index == 0:
+        layout = "cover" if has_cover else ("statement" if layout == "cover" else layout)
     elif is_last:
         layout = "cta"
-    elif layout == "orange_quote" and rng.random() > 0.30:
+    elif photo:
+        # User attachment → photo+text mid slide
+        layout = "cover"
+    elif layout == "orange_quote" and rng.random() > accent_bias:
         layout = "statement"
 
     if layout == "cover":
         return layout_cover(
-            s, lay, handle, category, palette, index=index, with_grid=with_grid, cover_src=cover_src
+            s,
+            lay,
+            handle,
+            category,
+            palette,
+            index=index,
+            with_grid=with_grid,
+            cover_src=photo,
+            photo_ratio=photo_ratio,
         )
     if layout == "orange_quote":
         return layout_accent_quote(s, lay, handle, category, palette, index=index)
     if layout == "cta":
         return layout_cta(s, lay, handle, category, palette, index=index, with_grid=with_grid)
-    return layout_content(s, lay, handle, category, palette, index=index, with_grid=False)
+    return layout_content(s, lay, handle, category, palette, index=index, with_grid=with_grid and grid_mode == "all")
 
 
 def build_carousel(
@@ -484,6 +521,8 @@ def build_carousel(
     aspect_ratio: str,
     palette: Palette,
     seed: int | None = None,
+    design: dict[str, Any] | None = None,
+    slide_photos: list[str] | None = None,
 ) -> dict[str, Any]:
     aspect = normalize_aspect(aspect_ratio)
     w, h = canvas_size(aspect)
@@ -497,6 +536,10 @@ def build_carousel(
     if total < 1:
         raise RuntimeError("Нет слайдов для сборки.")
 
+    design = design or {"hasCover": True, "gridMode": "edges", "accentBias": 0.45}
+    cover_src = content.cover if design.get("hasCover") else ""
+    photos = list(slide_photos or [])
+
     slides_out = [
         build_slide(
             s,
@@ -505,9 +548,11 @@ def build_carousel(
             lay=lay,
             handle=handle,
             category=category,
-            cover_src=content.cover,
+            cover_src=cover_src,
             palette=palette,
             rng=rng,
+            design=design,
+            slide_photo=photos[i] if i < len(photos) else "",
         )
         for i, s in enumerate(content.slides)
     ]
@@ -517,5 +562,6 @@ def build_carousel(
         "aspectRatio": aspect,
         "width": w,
         "height": h,
+        "design": design,
         "slides": slides_out,
     }

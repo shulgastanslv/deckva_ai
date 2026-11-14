@@ -88,6 +88,17 @@ def plan_briefs_text(plan: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _design_from_plan(plan: dict[str, Any] | None) -> dict[str, Any]:
+    if not plan:
+        return {"hasCover": True, "mood": ""}
+    design = plan.get("design") or {}
+    analysis = plan.get("analysis") or {}
+    return {
+        "hasCover": bool(design.get("hasCover", analysis.get("hasCover", True))),
+        "mood": str(design.get("mood") or analysis.get("mood") or ""),
+    }
+
+
 async def fill_and_layout(
     *,
     topic: str,
@@ -108,6 +119,7 @@ async def fill_and_layout(
         raise RuntimeError("slides_count должен быть >= 4.")
 
     briefs = plan_briefs_text(plan) if plan else ""
+    design = _design_from_plan(plan)
     return await chat_json(
         system=prompts.CAROUSEL_SYSTEM,
         user=prompts.carousel_user(
@@ -116,8 +128,11 @@ async def fill_and_layout(
             slides_count=slides_count,
             handle=handle,
             plan_briefs=briefs,
+            has_cover=design["hasCover"],
+            mood=design["mood"],
+            skill_brief=str(design.get("skillBrief") or ""),
         ),
-        temperature=0.85,
+        temperature=0.95,
         max_tokens=2800,
         model_id=model_id,
     )
@@ -157,6 +172,7 @@ async def normalize_slides(
     language: str,
     handle: str,
     model_id: str,
+    plan: dict[str, Any] | None = None,
 ) -> list[SlideContent]:
     out = parse_slides(raw.get("slides"), slides_count)
 
@@ -181,6 +197,15 @@ async def normalize_slides(
         raise RuntimeError(f"ИИ вернул {len(out)} из {slides_count} слайдов.")
 
     out = out[:slides_count]
-    out[0].layout = "cover"
+    has_cover = _design_from_plan(plan)["hasCover"]
+    if has_cover:
+        out[0].layout = "cover"
+    elif out[0].layout == "cover":
+        out[0].layout = "statement"
+        out[0].image_prompt = ""
     out[-1].layout = "cta"
+    # Mid slides must not accidentally be cover/cta
+    for i in range(1, len(out) - 1):
+        if out[i].layout in {"cover", "cta"}:
+            out[i].layout = "statement"
     return out

@@ -77,9 +77,18 @@ def assemble_carousel(
     plan: dict[str, Any],
     cora_run_id: str,
     save: bool,
+    slide_photos: list[str] | None = None,
 ) -> dict[str, Any]:
     seed = int(time.time() * 1000) % 2_147_483_647
-    carousel = build_carousel(content, aspect_ratio=ratio, palette=palette, seed=seed)
+    design = plan.get("design") if isinstance(plan.get("design"), dict) else None
+    carousel = build_carousel(
+        content,
+        aspect_ratio=ratio,
+        palette=palette,
+        seed=seed,
+        design=design,
+        slide_photos=slide_photos,
+    )
     carousel = stamp_cora_object_ids(carousel, plan)
 
     path: str | None = None
