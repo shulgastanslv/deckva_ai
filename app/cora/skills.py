@@ -4,7 +4,18 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-SkillId = Literal["launch", "howto", "offer", "tips", "story", "comparison"]
+SkillId = Literal[
+    "launch",
+    "howto",
+    "offer",
+    "tips",
+    "story",
+    "comparison",
+    "checklist",
+    "myths",
+    "framework",
+    "pricing",
+]
 
 # Fixed mid roles/layouts per skill (first = cover/hook, last = cta).
 _SKILL_SPECS: dict[str, dict[str, Any]] = {
@@ -71,6 +82,50 @@ _SKILL_SPECS: dict[str, dict[str, Any]] = {
         "brief": (
             "Comparison (before/after or A vs B). Keep claims concrete; end with "
             "a recommendation CTA."
+        ),
+    },
+    "checklist": {
+        "slidesCount": 6,
+        "hasCover": True,
+        "midRoles": ["list", "list", "list", "list"],
+        "midLayouts": ["list", "list", "list", "list"],
+        "preferredContentLayouts": ["tips", "list", "statement"],
+        "brief": (
+            "Checklist carousel. Cover states the goal; each mid slide is one "
+            "checklist item (or a small group) to complete; end with a ready CTA."
+        ),
+    },
+    "myths": {
+        "slidesCount": 6,
+        "hasCover": True,
+        "midRoles": ["pain", "shift", "pain", "shift"],
+        "midLayouts": ["statement", "quote", "statement", "quote"],
+        "preferredContentLayouts": ["statement", "orange_quote", "results"],
+        "brief": (
+            "Myth-busting carousel. Each mid pair: state a common myth, then the "
+            "truth with a short proof; close with a clear takeaway CTA."
+        ),
+    },
+    "framework": {
+        "slidesCount": 7,
+        "hasCover": True,
+        "midRoles": ["howto", "howto", "howto", "howto", "proof"],
+        "midLayouts": ["list", "list", "list", "list", "statement"],
+        "preferredContentLayouts": ["funnel", "tips", "statement"],
+        "brief": (
+            "Framework carousel: name the model on the cover, walk through 3–4 "
+            "stages one per slide, then show how to apply it; end with CTA."
+        ),
+    },
+    "pricing": {
+        "slidesCount": 5,
+        "hasCover": True,
+        "midRoles": ["offer", "offer", "proof"],
+        "midLayouts": ["list", "list", "statement"],
+        "preferredContentLayouts": ["funnel", "results", "statement"],
+        "brief": (
+            "Pricing carousel: introduce tiers, who each is for, what’s included, "
+            "and how to choose; end with a purchase / book CTA."
         ),
     },
 }

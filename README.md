@@ -22,7 +22,7 @@ uvicorn app.main:app --reload --port 8000
 | `app/catalog.py` | каталог моделей + ACL планов |
 | `app/cora/` | CORA Fast: plan → execute → assemble |
 | `app/content.py` | tool `llm.fill_and_layout` |
-| `app/palette.py` / `template.py` | палитра + Fabric assemble |
+| `app/palette.py` / `templates/` | палитра + Fabric templates (OOP registry по skillId) |
 | `app/stock_photos.py` | Unsplash search по `image_prompt` |
 
 ## API
