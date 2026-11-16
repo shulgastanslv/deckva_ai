@@ -60,7 +60,10 @@ class CoraRunRequest(BaseModel):
     skill_id: str | None = Field(
         None,
         alias="skillId",
-        description="launch|howto|offer|tips|story|comparison|checklist|myths|framework|pricing",
+        description=(
+            "launch|howto|offer|tips|story|comparison|checklist|myths|framework|pricing|"
+            "aesthetic|manifesto|niches|lookbook"
+        ),
         max_length=32,
     )
     attachments: list[CoraAttachment] = Field(default_factory=list)

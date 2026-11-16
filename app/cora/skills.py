@@ -15,6 +15,11 @@ SkillId = Literal[
     "myths",
     "framework",
     "pricing",
+    # Reference full-bleed lifestyle covers (blog carousel mood)
+    "aesthetic",
+    "manifesto",
+    "niches",
+    "lookbook",
 ]
 
 # Fixed mid roles/layouts per skill (first = cover/hook, last = cta).
@@ -126,6 +131,55 @@ _SKILL_SPECS: dict[str, dict[str, Any]] = {
         "brief": (
             "Pricing carousel: introduce tiers, who each is for, what’s included, "
             "and how to choose; end with a purchase / book CTA."
+        ),
+    },
+    "aesthetic": {
+        "slidesCount": 6,
+        "hasCover": True,
+        "midRoles": ["offer", "howto", "proof", "lesson"],
+        "midLayouts": ["statement", "list", "quote", "statement"],
+        "preferredContentLayouts": ["statement", "orange_quote", "tips"],
+        "brief": (
+            "Aesthetic lifestyle carousel (full-bleed cover). Soft lowercase hook on cover; "
+            "image_prompt = moody minimalist interior / fashion portrait, negative space for text. "
+            "Mid slides: one calm tip or idea each; end with soft CTA."
+        ),
+    },
+    "manifesto": {
+        "slidesCount": 5,
+        "hasCover": True,
+        "midRoles": ["hook", "shift", "lesson"],
+        "midLayouts": ["statement", "quote", "statement"],
+        "preferredContentLayouts": ["statement", "orange_quote"],
+        "brief": (
+            "Manifesto carousel. Cover heading is a short stacked slogan (3–6 words), "
+            "image_prompt = bright outdoor lifestyle portrait with sky/negative space. "
+            "Body on cover = tiny footnote. Mid: unpack the stance; close with CTA."
+        ),
+    },
+    "niches": {
+        "slidesCount": 7,
+        "hasCover": True,
+        "midRoles": ["list", "list", "list", "list", "list"],
+        "midLayouts": ["list", "list", "list", "list", "list"],
+        "preferredContentLayouts": ["tips", "statement"],
+        "brief": (
+            "Niches / ideas-for-experts carousel. Cover: short bracket-style title in heading, "
+            "items = 5–8 niche names (косметолог, фотограф…), callout = subtitle. "
+            "image_prompt = warm editorial lifestyle interior, person seated, space for floating tags. "
+            "Each mid slide = one niche tip; end with CTA."
+        ),
+    },
+    "lookbook": {
+        "slidesCount": 6,
+        "hasCover": True,
+        "midRoles": ["list", "list", "list", "proof"],
+        "midLayouts": ["list", "list", "list", "statement"],
+        "preferredContentLayouts": ["tips", "statement", "results"],
+        "brief": (
+            "Lookbook / photo-ideas carousel. Cover heading = idea title, callout or body = short "
+            "save-cue (e.g. сохраняй). image_prompt = fashion street style, top-down or full-body, "
+            "muted autumn tones, room for centered type. Mid slides = frame ideas; end with CTA."
         ),
     },
 }

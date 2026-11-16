@@ -8,6 +8,7 @@ from app.palette import Palette
 from app.schemas import CarouselContent
 from app.templates.base import CarouselTemplate
 from app.templates.default import DefaultTemplate
+from app.templates.reference_skills import REFERENCE_SKILL_TEMPLATE_CLASSES
 from app.templates.skills import SKILL_TEMPLATE_CLASSES
 
 _DEFAULT = DefaultTemplate()
@@ -25,7 +26,7 @@ def register(template: CarouselTemplate) -> None:
 def _bootstrap() -> None:
     if _BY_SKILL:
         return
-    for cls in SKILL_TEMPLATE_CLASSES:
+    for cls in (*SKILL_TEMPLATE_CLASSES, *REFERENCE_SKILL_TEMPLATE_CLASSES):
         register(cls())
 
 
