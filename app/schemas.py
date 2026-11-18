@@ -5,7 +5,6 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 AspectRatio = Literal["1:1", "4:5", "9:16", "16:9"]
-PlanId = Literal["free", "pro"]
 CoraMode = Literal["fast", "thinking"]
 CoraStatus = Literal["queued", "planning", "executing", "assembling", "done", "failed"]
 SlideLayout = Literal[
@@ -49,11 +48,10 @@ class CoraRunRequest(BaseModel):
     topic: str = Field(..., min_length=2, max_length=800)
     language: str = Field(..., min_length=2, max_length=8)
     ratio: AspectRatio
-    slides_count: int = Field(..., alias="slidesCount", ge=4, le=10)
+    slides_count: int = Field(..., alias="slidesCount", ge=1, le=10)
     handle: str = Field(..., min_length=2, max_length=64)
     cover: str = Field("", description="URL/путь обложки; пустая строка = placeholder")
     mode: CoraMode = "fast"
-    plan: PlanId = "free"
     model_id: str | None = Field(None, alias="modelId")
     brand_kit: BrandKit | None = Field(None, alias="brandKit")
     seed_text: str | None = Field(None, alias="seedText", max_length=8000)

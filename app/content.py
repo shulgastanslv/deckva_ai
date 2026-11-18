@@ -115,8 +115,8 @@ async def fill_and_layout(
         raise RuntimeError("Не указан handle.")
     if not language.strip():
         raise RuntimeError("Не указан language.")
-    if slides_count < 4:
-        raise RuntimeError("slides_count должен быть >= 4.")
+    if slides_count < 1:
+        raise RuntimeError("slides_count должен быть >= 1.")
 
     briefs = plan_briefs_text(plan) if plan else ""
     design = _design_from_plan(plan)

@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from app.catalog import PlanId, resolve_model_id
+from app.catalog import resolve_model_id
 from app.content import fill_and_layout, normalize_slides
 from app.cora.assemble import assemble_carousel, content_from_raw
 from app.cora.plan import bind_content_to_plan, build_skeleton_plan, decide_design, object_bindings
@@ -109,15 +109,13 @@ def _brand_dict(req: CoraRunRequest) -> dict[str, Any]:
 
 
 async def run_cora_fast(req: CoraRunRequest) -> CoraRunResponse:
-    plan_id: PlanId = req.plan  # type: ignore[assignment]
-
     try:
-        model_id = resolve_model_id(plan_id, req.model_id)
+        model_id = resolve_model_id(req.model_id)
     except PermissionError as exc:
         raise RuntimeError(str(exc)) from exc
 
     mode = "fast" if req.mode != "fast" else req.mode  # Thinking = phase B
-    slides_count = max(4, min(10, req.slides_count))
+    slides_count = max(1, min(10, req.slides_count))
     cora_run_id = _new_run_id()
     provider = LLM_PROVIDER
     status = "planning"

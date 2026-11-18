@@ -16,15 +16,13 @@ from app.main import app
 from app.schemas import SlideContent
 
 
-def test_catalog_all_models_for_any_plan():
-    free = {m.model_id for m in list_models(plan="free")}
-    pro = {m.model_id for m in list_models(plan="pro")}
-    assert "gemini-flash" in free
-    assert "claude-sonnet" in free
-    assert "claude-opus" in free
-    assert free == pro
-    assert resolve_model_id("free", "claude-sonnet") == "claude-sonnet"
-    assert resolve_model_id("free", None) == "gemini-flash"
+def test_catalog_lists_models_without_plan():
+    ids = {m.model_id for m in list_models()}
+    assert "gemini-flash" in ids
+    assert "claude-sonnet" in ids
+    assert "claude-opus" in ids
+    assert resolve_model_id("claude-sonnet") == "claude-sonnet"
+    assert resolve_model_id(None) == "gemini-flash"
 
 
 def test_design_varies_and_optional_cover():
@@ -200,7 +198,6 @@ def test_cora_run_openrouter_path():
                 "handle": "@x",
                 "cover": "",
                 "mode": "fast",
-                "plan": "free",
                 "modelId": "gemini-flash",
                 "save": False,
             },
@@ -235,7 +232,6 @@ def test_cora_fails_without_key():
                     "slidesCount": 5,
                     "handle": "@x",
                     "cover": "",
-                    "plan": "free",
                     "modelId": "gemini-flash",
                 },
             )
@@ -243,7 +239,7 @@ def test_cora_fails_without_key():
 
 
 if __name__ == "__main__":
-    test_catalog_acl()
+    test_catalog_lists_models_without_plan()
     test_design_varies_and_optional_cover()
     test_plan_objects_with_and_without_cover()
     test_api_no_legacy_routes()

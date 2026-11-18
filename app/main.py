@@ -23,7 +23,7 @@ app = FastAPI(
     description=(
         "CORA Fast + OpenRouter gateway. "
         "Единый путь генерации: POST /cora/run. Без Ollama / BYOK. "
-        "Подписка / лимит генераций — на Next.js сервере."
+        "Дневной лимит генераций — на Next.js сервере."
     ),
     version="0.7.0",
 )
@@ -53,10 +53,9 @@ async def healthcheck():
 
 
 @app.get("/models")
-async def models(plan: str = Query("free", pattern="^(free|pro)$")):
-    rows = list_models(plan=plan)  # type: ignore[arg-type]
+async def models():
+    rows = list_models()
     return {
-        "plan": plan,
         "models": [
             {
                 "modelId": m.model_id,
@@ -64,7 +63,6 @@ async def models(plan: str = Query("free", pattern="^(free|pro)$")):
                 "tier": m.tier,
                 "openRouterSlug": m.open_router_slug,
                 "enabled": m.enabled,
-                "isFree": False,
                 "creditCost": m.credit_cost,
             }
             for m in rows

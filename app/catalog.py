@@ -1,8 +1,8 @@
 """AiModelCatalog + routing.
 
 Slugs match OpenRouter model ids.
-Billing lives on Next.js — free users get 3 generations (any model) there;
-this catalog lists models and resolves slugs. Plan query stays for defaults.
+Daily generation limits live on Next.js — this service only lists models
+and resolves OpenRouter slugs. No pro/free gating here.
 
 Do NOT list `openrouter/free` (random router) or tiny <3B free models —
 they often burn max_tokens on reasoning and return empty content for CORA JSON.
@@ -13,13 +13,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-PlanId = Literal["free", "pro"]
 ModelTier = Literal["economy", "standard", "premium"]
 
-DEFAULT_MODEL_BY_PLAN: dict[PlanId, str] = {
-    "free": "gemini-flash",
-    "pro": "claude-sonnet",
-}
+DEFAULT_MODEL_ID = "gemini-flash"
 
 
 @dataclass(frozen=True)
@@ -58,8 +54,7 @@ _MODELS: tuple[AiModel, ...] = (
 )
 
 
-def list_models(*, plan: PlanId | None = None, enabled_only: bool = True) -> list[AiModel]:
-    del plan  # all plans see the full catalog; billing gates usage on Next.js
+def list_models(*, enabled_only: bool = True) -> list[AiModel]:
     rows = [m for m in _MODELS if m.enabled or not enabled_only]
     return sorted(rows, key=lambda m: m.sort)
 
@@ -73,12 +68,7 @@ def get_model(model_id: str) -> AiModel:
     raise RuntimeError(f"Неизвестная модель: {model_id}")
 
 
-def plan_allows_model(plan: PlanId, model: AiModel) -> bool:
-    del plan, model
-    return True
-
-
-def resolve_model_id(plan: PlanId, model_id: str | None) -> str:
+def resolve_model_id(model_id: str | None) -> str:
     if model_id:
         return get_model(model_id).model_id
-    return DEFAULT_MODEL_BY_PLAN[plan]
+    return DEFAULT_MODEL_ID

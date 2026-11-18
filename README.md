@@ -31,8 +31,8 @@ uvicorn app.main:app --reload --port 8000
 ### `GET /health`
 Сервис + статус OpenRouter.
 
-### `GET /models?plan=free|pro`
-Полный каталог моделей (лимит 3 бесплатных генераций на любом плане — в Next.js).
+### `GET /models`
+Полный каталог моделей. Дневной лимит генераций — в Next.js.
 
 ### `POST /cora/run` — единственный путь генерации
 ```json
@@ -45,7 +45,6 @@ uvicorn app.main:app --reload --port 8000
   "handle": "@coach",
   "cover": "",
   "mode": "fast",
-  "plan": "free",
   "modelId": "gemini-flash",
   "save": false
 }
