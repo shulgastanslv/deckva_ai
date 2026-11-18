@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from app.fonts import Typography
 from app.palette import Palette
 from app.schemas import CarouselContent, PaletteResponse, SlideContent
 from app.template import build_carousel
@@ -78,6 +79,7 @@ def assemble_carousel(
     cora_run_id: str,
     save: bool,
     slide_photos: list[str] | None = None,
+    typography: Typography | None = None,
 ) -> dict[str, Any]:
     seed = int(time.time() * 1000) % 2_147_483_647
     design = plan.get("design") if isinstance(plan.get("design"), dict) else None
@@ -88,8 +90,11 @@ def assemble_carousel(
         seed=seed,
         design=design,
         slide_photos=slide_photos,
+        typography=typography,
     )
     carousel = stamp_cora_object_ids(carousel, plan)
+    if isinstance(design, dict) and carousel.get("design"):
+        design.update(carousel["design"])
 
     path: str | None = None
     if save:
@@ -102,6 +107,7 @@ def assemble_carousel(
             "width": carousel["width"],
             "height": carousel["height"],
             "palette": palette.to_dict(),
+            "typography": carousel.get("typography"),
             "plan": plan,
             "slides": carousel["slides"],
         }
@@ -115,11 +121,13 @@ def assemble_carousel(
         "height": carousel["height"],
         "path": path,
         "palette": palette_response(palette),
+        "typography": carousel.get("typography"),
         "carousel": {
             "title": carousel["title"],
             "aspectRatio": carousel["aspectRatio"],
             "width": carousel["width"],
             "height": carousel["height"],
+            "typography": carousel.get("typography"),
             "slides": carousel["slides"],
         },
     }

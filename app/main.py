@@ -10,6 +10,7 @@ load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 from app.catalog import list_models, resolve_model_id
 from app.cora import get_run, list_runs_for_user, run_cora_fast
+from app.fonts import TYPE_SCALES, list_fonts
 from app.llm import complete as gateway_complete
 from app.llm import health
 from app.schemas import (
@@ -25,7 +26,7 @@ app = FastAPI(
         "Единый путь генерации: POST /cora/run. Без Ollama / BYOK. "
         "Дневной лимит генераций — на Next.js сервере."
     ),
-    version="0.7.0",
+    version="0.8.0",
 )
 
 app.add_middleware(
@@ -67,6 +68,15 @@ async def models():
             }
             for m in rows
         ],
+    }
+
+
+@app.get("/fonts")
+async def fonts():
+    """Каталог из 20 шрифтов; ИИ выбирает family + typeScale при генерации."""
+    return {
+        "fonts": list_fonts(),
+        "typeScales": sorted(TYPE_SCALES.keys()),
     }
 
 

@@ -6,8 +6,8 @@ from typing import Any, ClassVar
 
 from app.palette import Palette
 from app.schemas import SlideContent
+from app.fonts import current_font, scaled_size
 from app.templates.base import (
-    FONT,
     GAP,
     SIZE_META,
     L,
@@ -113,8 +113,8 @@ class AestheticTemplate(DefaultTemplate):
                 left=lay.pad,
                 top=lay.h * 0.58,
                 width=120,
-                font_size=SIZE_META,
-                font_family=FONT,
+                font_size=scaled_size(SIZE_META, kind="meta"),
+                font_family=current_font(),
                 fill=fill,
                 font_weight="400",
                 opacity=0.85,
@@ -123,14 +123,14 @@ class AestheticTemplate(DefaultTemplate):
         )
         heading = clip(s.heading, 160).lower()
         body = clip(s.body, 100).lower() if s.body else ""
-        head_h = text_h(heading, self.head_size, lay.w * 0.62)
+        head_h = text_h(heading, self.head_px, lay.w * 0.62)
         body_h = text_h(body, 22, lay.w * 0.55) if body else 0
         y = lay.h - lay.pad * 2.2 - head_h - (GAP + body_h if body else 0)
         head, bottom = text_block(
             heading,
             top=y,
             lay=lay,
-            font_size=self.head_size,
+            font_size=self.head_px,
             font_weight="500",
             fill=fill,
             swibp_style="heading",
@@ -189,8 +189,8 @@ class ManifestoTemplate(DefaultTemplate):
                 left=lay.pad,
                 top=lay.pad * 0.9,
                 width=lay.w * 0.45,
-                font_size=SIZE_META,
-                font_family=FONT,
+                font_size=scaled_size(SIZE_META, kind="meta"),
+                font_family=current_font(),
                 fill=fill,
                 font_weight="500",
                 swibp_style="body",
@@ -200,7 +200,7 @@ class ManifestoTemplate(DefaultTemplate):
         objs.append(counter(index, lay, fill=fill))
 
         lines = _split_stack(clip(s.heading, 80).upper(), max_lines=5)
-        line_size = self.head_size
+        line_size = self.head_px
         line_gap = 6
         block_h = len(lines) * (line_size * 0.95 + line_gap)
         y = (lay.h - block_h) / 2
@@ -212,7 +212,7 @@ class ManifestoTemplate(DefaultTemplate):
                     top=y,
                     width=lay.w - lay.pad * 2,
                     font_size=line_size,
-                    font_family=FONT,
+                    font_family=current_font(),
                     fill=fill,
                     font_weight="700",
                     text_align="center",
@@ -231,7 +231,7 @@ class ManifestoTemplate(DefaultTemplate):
                     top=lay.h - lay.pad * 2.4,
                     width=lay.w * 0.5,
                     font_size=18,
-                    font_family=FONT,
+                    font_family=current_font(),
                     fill="#111111",
                     font_weight="500",
                     swibp_style="body",
@@ -281,7 +281,7 @@ class NichesTemplate(DefaultTemplate):
                 top=lay.pad * 1.1,
                 width=lay.w - lay.pad * 2,
                 font_size=28,
-                font_family=FONT,
+                font_family=current_font(),
                 fill=cream,
                 font_weight="700",
                 text_align="center",
@@ -296,7 +296,7 @@ class NichesTemplate(DefaultTemplate):
                     top=lay.pad * 1.1 + 40,
                     width=lay.w * 0.4,
                     font_size=22,
-                    font_family=FONT,
+                    font_family=current_font(),
                     fill=cream,
                     font_weight="600",
                     swibp_style="body",
@@ -318,7 +318,7 @@ class NichesTemplate(DefaultTemplate):
                     top=y_left if on_left else y_right,
                     width=lay.w * 0.36,
                     font_size=26,
-                    font_family=FONT,
+                    font_family=current_font(),
                     fill=cream,
                     font_weight="700",
                     swibp_style="body",
@@ -338,7 +338,7 @@ class NichesTemplate(DefaultTemplate):
                     top=lay.h - lay.pad * 3.2,
                     width=lay.w * 0.5,
                     font_size=22,
-                    font_family=FONT,
+                    font_family=current_font(),
                     fill=cream,
                     font_weight="600",
                     text_align="right",
@@ -352,8 +352,8 @@ class NichesTemplate(DefaultTemplate):
                 left=lay.w - lay.pad - 200,
                 top=lay.h - lay.pad * 1.4,
                 width=200,
-                font_size=SIZE_META,
-                font_family=FONT,
+                font_size=scaled_size(SIZE_META, kind="meta"),
+                font_family=current_font(),
                 fill=white,
                 font_weight="500",
                 text_align="right",
@@ -404,7 +404,7 @@ class LookbookTemplate(DefaultTemplate):
                 top=lay.pad,
                 width=lay.w * 0.55,
                 font_size=16,
-                font_family=FONT,
+                font_family=current_font(),
                 fill=fill,
                 font_weight="500",
                 opacity=0.9,
@@ -417,8 +417,8 @@ class LookbookTemplate(DefaultTemplate):
                 left=lay.w - lay.pad - 180,
                 top=lay.pad,
                 width=180,
-                font_size=SIZE_META,
-                font_family=FONT,
+                font_size=scaled_size(SIZE_META, kind="meta"),
+                font_family=current_font(),
                 fill=fill,
                 font_weight="500",
                 text_align="right",
@@ -428,7 +428,7 @@ class LookbookTemplate(DefaultTemplate):
         )
 
         heading = clip(s.heading, 90).lower()
-        head_h = text_h(heading, self.head_size, lay.w - lay.pad * 2)
+        head_h = text_h(heading, self.head_px, lay.w - lay.pad * 2)
         y = lay.h * 0.42 - head_h / 2
         objs.append(
             textbox(
@@ -436,8 +436,8 @@ class LookbookTemplate(DefaultTemplate):
                 left=lay.pad,
                 top=y,
                 width=lay.w - lay.pad * 2,
-                font_size=self.head_size,
-                font_family=FONT,
+                font_size=self.head_px,
+                font_family=current_font(),
                 fill=cream,
                 font_weight="700",
                 text_align="center",
@@ -453,7 +453,7 @@ class LookbookTemplate(DefaultTemplate):
                 top=y + head_h + 16,
                 width=lay.w - lay.pad * 2,
                 font_size=20,
-                font_family=FONT,
+                font_family=current_font(),
                 fill=fill,
                 font_weight="500",
                 text_align="center",

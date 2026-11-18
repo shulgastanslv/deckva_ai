@@ -9,8 +9,6 @@ from app.schemas import SlideContent
 from app.templates.base import (
     GAP,
     PHOTO_TEXT_GAP,
-    SIZE_BODY,
-    SIZE_HEAD,
     CarouselTemplate,
     L,
     callout_block,
@@ -69,7 +67,7 @@ class DefaultTemplate(CarouselTemplate):
         heading = clip(s.heading, 120)
         body = clip(s.body, 200) if s.body else ""
         total_h = stack_height(
-            heading, body, [], "", lay, head_size=self.head_size, body_size=self.body_size
+            heading, body, [], "", lay, head_size=self.head_px, body_size=self.body_px
         )
         y = content_start_y(total_h, lay, zone_top=photo_h + PHOTO_TEXT_GAP, zone_bottom=lay.h)
         y = max(y, photo_h + PHOTO_TEXT_GAP)
@@ -78,7 +76,7 @@ class DefaultTemplate(CarouselTemplate):
             heading,
             top=y,
             lay=lay,
-            font_size=self.head_size,
+            font_size=self.head_px,
             font_weight="bold",
             fill=palette.text,
             swibp_style="heading",
@@ -89,7 +87,7 @@ class DefaultTemplate(CarouselTemplate):
                 body,
                 top=bottom + GAP,
                 lay=lay,
-                font_size=self.body_size,
+                font_size=self.body_px,
                 font_weight="500",
                 fill=palette.text,
                 swibp_style="body",
@@ -128,8 +126,8 @@ class DefaultTemplate(CarouselTemplate):
             callout,
             lay,
             bullet=self.item_bullet,
-            head_size=self.head_size,
-            body_size=self.body_size,
+            head_size=self.head_px,
+            body_size=self.body_px,
         )
         y = content_start_y(total_h, lay)
 
@@ -137,7 +135,7 @@ class DefaultTemplate(CarouselTemplate):
             heading,
             top=y,
             lay=lay,
-            font_size=self.head_size,
+            font_size=self.head_px,
             font_weight="bold",
             fill=palette.text,
             swibp_style="heading",
@@ -150,7 +148,7 @@ class DefaultTemplate(CarouselTemplate):
                 items_text(items, bullet=self.item_bullet),
                 top=next_top,
                 lay=lay,
-                font_size=self.body_size,
+                font_size=self.body_px,
                 font_weight="500",
                 fill=palette.text,
                 swibp_style="body",
@@ -162,7 +160,7 @@ class DefaultTemplate(CarouselTemplate):
                 body,
                 top=next_top,
                 lay=lay,
-                font_size=self.body_size,
+                font_size=self.body_px,
                 font_weight="500",
                 fill=palette.text,
                 swibp_style="body",
@@ -192,13 +190,13 @@ class DefaultTemplate(CarouselTemplate):
             counter(index, lay, fill=palette.accent_text),
         ]
         heading = clip(s.heading, 180)
-        total_h = stack_height(heading, "", [], "", lay, head_size=self.head_size)
+        total_h = stack_height(heading, "", [], "", lay, head_size=self.head_px)
         y = content_start_y(total_h, lay)
         head, _ = text_block(
             heading,
             top=y,
             lay=lay,
-            font_size=self.head_size,
+            font_size=self.head_px,
             font_weight="bold",
             fill=palette.accent_text,
             swibp_style="heading",
@@ -228,7 +226,7 @@ class DefaultTemplate(CarouselTemplate):
         heading = clip(s.callout or s.heading, 140)
         body = clip(s.body, 160) if s.body else ""
         total_h = stack_height(
-            heading, body, [], "", lay, head_size=self.head_size, body_size=self.body_size
+            heading, body, [], "", lay, head_size=self.head_px, body_size=self.body_px
         )
         y = content_start_y(total_h, lay)
 
@@ -236,7 +234,7 @@ class DefaultTemplate(CarouselTemplate):
             heading,
             top=y,
             lay=lay,
-            font_size=self.head_size,
+            font_size=self.head_px,
             font_weight="bold",
             fill=palette.text,
             swibp_style="heading",
@@ -247,7 +245,7 @@ class DefaultTemplate(CarouselTemplate):
                 body,
                 top=bottom + GAP,
                 lay=lay,
-                font_size=self.body_size,
+                font_size=self.body_px,
                 font_weight="500",
                 fill=palette.text,
                 swibp_style="body",

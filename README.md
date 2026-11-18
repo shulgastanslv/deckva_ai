@@ -34,6 +34,9 @@ uvicorn app.main:app --reload --port 8000
 ### `GET /models`
 Полный каталог моделей. Дневной лимит генераций — в Next.js.
 
+### `GET /fonts`
+20 шрифтов (2026) + список `typeScales`. Шрифт и размеры на run выбирает ИИ.
+
 ### `POST /cora/run` — единственный путь генерации
 ```json
 {
@@ -43,6 +46,7 @@ uvicorn app.main:app --reload --port 8000
   "ratio": "4:5",
   "slidesCount": 7,
   "handle": "@coach",
+  "showHandle": true,
   "cover": "",
   "mode": "fast",
   "modelId": "gemini-flash",
@@ -50,7 +54,11 @@ uvicorn app.main:app --reload --port 8000
 }
 ```
 
-Ответ: `coraRunId`, `CarouselPlan` с object ids, Fabric `carousel`.
+Ответ: `coraRunId`, `CarouselPlan` с object ids, Fabric `carousel` (+ `typography` в design).
+
+Типографика: ИИ выбирает шрифт из каталога `GET /fonts` (все с кириллицей+латиницей) и шкалу размеров (`typeScale`).  
+Макс. размер заголовка — **70**. Опциональный override: `"font": "Poppins"`.  
+Author handle: `"showHandle": false` — не рисовать хэндл на слайдах (`handle` тогда не обязателен).
 
 ### `GET /cora/runs/{coraRunId}` / `GET /cora/runs?userId=`
 Статус и история run.

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.fonts import Typography
 from app.palette import Palette
 from app.schemas import CarouselContent
 from app.templates.base import CarouselTemplate
@@ -53,6 +54,7 @@ def build_carousel(
     design: dict[str, Any] | None = None,
     slide_photos: list[str] | None = None,
     skill_id: str | None = None,
+    typography: Typography | None = None,
 ) -> dict[str, Any]:
     design = design or {}
     sid = skill_id if skill_id is not None else design.get("skillId")
@@ -68,4 +70,5 @@ def build_carousel(
         seed=seed,
         design=design,
         slide_photos=slide_photos,
+        typography=typography,
     )

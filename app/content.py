@@ -111,8 +111,6 @@ async def fill_and_layout(
     """EXECUTE job: возвращает сырой carousel JSON от модели."""
     if not topic.strip():
         raise RuntimeError("Не указан topic.")
-    if not handle.strip():
-        raise RuntimeError("Не указан handle.")
     if not language.strip():
         raise RuntimeError("Не указан language.")
     if slides_count < 1:

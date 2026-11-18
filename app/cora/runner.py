@@ -12,6 +12,7 @@ from app.cora.plan import bind_content_to_plan, build_skeleton_plan, decide_desi
 from app.cora.skills import normalize_skill_id, skill_prompt_brief
 from app.cora.store import save_run
 from app.cover_media import resolve_cover_src
+from app.fonts import generate_typography, resolve_font
 from app.palette import generate_palette
 from app.schemas import CoraRunRequest, CoraRunResponse
 from app.stock_photos import fill_slide_photos_from_prompts, stock_photos_enabled
@@ -231,15 +232,36 @@ async def run_cora_fast(req: CoraRunRequest) -> CoraRunResponse:
         content = content_from_raw(
             raw=raw,
             slides=slides,
-            handle=req.handle,
+            handle=req.handle if req.show_handle else (req.handle or ""),
             cover_src=cover_src,
         )
+        mood = str(design.get("mood") or "")
+        font_override = resolve_font(req.font)
+        if not font_override and req.brand_kit and req.brand_kit.fonts:
+            for candidate in req.brand_kit.fonts:
+                font_override = resolve_font(candidate)
+                if font_override:
+                    break
+
         palette = await generate_palette(
             topic=req.topic,
             language=req.language,
             model_id=model_id,
-            mood=str(design.get("mood") or ""),
+            mood=mood,
         )
+        typography = await generate_typography(
+            topic=req.topic,
+            language=req.language,
+            mood=mood,
+            model_id=model_id,
+            show_handle=bool(req.show_handle),
+            font_override=font_override,
+        )
+        if isinstance(design, dict):
+            design["typography"] = typography.to_dict()
+            design["fontFamily"] = typography.font_family
+            design["showHandle"] = typography.show_handle
+            plan["design"] = design
 
         status = "assembling"
         plan = bind_content_to_plan(plan, slides)
@@ -251,6 +273,7 @@ async def run_cora_fast(req: CoraRunRequest) -> CoraRunResponse:
             cora_run_id=cora_run_id,
             save=req.save,
             slide_photos=slide_photos,
+            typography=typography,
         )
         status = "done"
         response = CoraRunResponse(

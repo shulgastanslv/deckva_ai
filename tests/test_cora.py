@@ -133,6 +133,16 @@ def _fake_palette() -> dict:
     }
 
 
+def _fake_typography() -> dict:
+    return {
+        "fontFamily": "Poppins",
+        "typeScale": "editorial",
+        "headSize": 64,
+        "bodySize": 24,
+        "metaSize": 18,
+    }
+
+
 def test_api_no_legacy_routes():
     c = TestClient(app)
     assert c.post("/generate", json={}).status_code == 404
@@ -175,17 +185,32 @@ def test_stock_query_cleaner_and_fill():
     assert photos[4] == ""
 
 
+def test_fonts_catalog():
+    c = TestClient(app)
+    r = c.get("/fonts")
+    assert r.status_code == 200
+    body = r.json()
+    assert len(body["fonts"]) == 20
+    assert "balanced" in body["typeScales"]
+    assert body["fonts"][0]["family"]
+
+
 def test_cora_run_openrouter_path():
     c = TestClient(app)
 
     async def fake_chat_json(**kwargs):
         system = kwargs.get("system", "")
-        if "арт-директор" in system.lower() or "палитр" in system.lower():
+        low = system.lower()
+        if "типографик" in low or "typeScale" in system or "fontFamily" in system:
+            return _fake_typography()
+        if "арт-директор" in low or "палитр" in low:
             return _fake_palette()
         return _fake_carousel(5, has_cover=True)
 
     with patch("app.content.chat_json", new=AsyncMock(side_effect=fake_chat_json)), patch(
         "app.palette.chat_json", new=AsyncMock(side_effect=fake_chat_json)
+    ), patch(
+        "app.fonts.chat_json", new=AsyncMock(side_effect=fake_chat_json)
     ), patch("app.cora.runner.stock_photos_enabled", return_value=False):
         r = c.post(
             "/cora/run",
@@ -196,6 +221,7 @@ def test_cora_run_openrouter_path():
                 "ratio": "4:5",
                 "slidesCount": 5,
                 "handle": "@x",
+                "showHandle": True,
                 "cover": "",
                 "mode": "fast",
                 "modelId": "gemini-flash",
@@ -210,12 +236,64 @@ def test_cora_run_openrouter_path():
     assert "design" in body["plan"]
     assert "hasCover" in body["plan"]["design"]
     assert "mood" in body["plan"]["design"]
+    assert body["plan"]["design"]["fontFamily"] == "Poppins"
+    assert body["plan"]["design"]["typography"]["typeScale"] == "editorial"
     assert body["palette"]["name"] == "midnight_ink"
     assert body["carousel"]["slides"]
+    # Fabric text uses AI-chosen font
+    fonts = {
+        o.get("fontFamily")
+        for s in body["carousel"]["slides"]
+        for o in s.get("objects") or []
+        if o.get("type") == "Textbox"
+    }
+    assert "Poppins" in fonts
 
     got = c.get(f"/cora/runs/{body['coraRunId']}")
     assert got.status_code == 200
     assert got.json()["status"] == "done"
+
+
+def test_cora_run_hide_handle():
+    c = TestClient(app)
+
+    async def fake_chat_json(**kwargs):
+        system = kwargs.get("system", "")
+        low = system.lower()
+        if "типографик" in low or "fontFamily" in system:
+            return _fake_typography()
+        if "арт-директор" in low or "палитр" in low:
+            return _fake_palette()
+        return _fake_carousel(5, has_cover=True)
+
+    with patch("app.content.chat_json", new=AsyncMock(side_effect=fake_chat_json)), patch(
+        "app.palette.chat_json", new=AsyncMock(side_effect=fake_chat_json)
+    ), patch(
+        "app.fonts.chat_json", new=AsyncMock(side_effect=fake_chat_json)
+    ), patch("app.cora.runner.stock_photos_enabled", return_value=False):
+        r = c.post(
+            "/cora/run",
+            json={
+                "userId": "e2e_no_handle",
+                "topic": "как вести блог",
+                "language": "ru",
+                "ratio": "4:5",
+                "slidesCount": 5,
+                "showHandle": False,
+                "cover": "",
+                "modelId": "gemini-flash",
+                "save": False,
+            },
+        )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    roles = {
+        o.get("swibpRole")
+        for s in body["carousel"]["slides"]
+        for o in s.get("objects") or []
+    }
+    assert "handle" not in roles
+    assert body["plan"]["design"]["showHandle"] is False
 
 
 def test_cora_fails_without_key():
@@ -243,6 +321,8 @@ if __name__ == "__main__":
     test_design_varies_and_optional_cover()
     test_plan_objects_with_and_without_cover()
     test_api_no_legacy_routes()
+    test_fonts_catalog()
     test_cora_run_openrouter_path()
+    test_cora_run_hide_handle()
     test_cora_fails_without_key()
     print("ok")

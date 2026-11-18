@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 AspectRatio = Literal["1:1", "4:5", "9:16", "16:9"]
 CoraMode = Literal["fast", "thinking"]
@@ -49,7 +49,17 @@ class CoraRunRequest(BaseModel):
     language: str = Field(..., min_length=2, max_length=8)
     ratio: AspectRatio
     slides_count: int = Field(..., alias="slidesCount", ge=1, le=10)
-    handle: str = Field(..., min_length=2, max_length=64)
+    handle: str = Field("", max_length=64, description="Author handle; optional if showHandle=false")
+    show_handle: bool = Field(
+        True,
+        alias="showHandle",
+        description="Рисовать author handle на слайдах",
+    )
+    font: str | None = Field(
+        None,
+        max_length=64,
+        description="Опциональный override шрифта; иначе ИИ выбирает из каталога /fonts",
+    )
     cover: str = Field("", description="URL/путь обложки; пустая строка = placeholder")
     mode: CoraMode = "fast"
     model_id: str | None = Field(None, alias="modelId")
@@ -73,6 +83,14 @@ class CoraRunRequest(BaseModel):
     save: bool = False
 
     model_config = {"populate_by_name": True}
+
+    @model_validator(mode="after")
+    def _handle_required_when_shown(self) -> CoraRunRequest:
+        h = (self.handle or "").strip()
+        if self.show_handle and len(h) < 2:
+            raise ValueError("handle обязателен (мин. 2 символа), если showHandle=true")
+        self.handle = h
+        return self
 
 class GatewayCompleteRequest(BaseModel):
     model_id: str = Field(..., alias="modelId")

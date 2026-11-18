@@ -6,8 +6,8 @@ from typing import Any, ClassVar
 
 from app.palette import Palette
 from app.schemas import SlideContent
+from app.fonts import current_font, scaled_size
 from app.templates.base import (
-    FONT,
     GAP,
     LINE_HEIGHT,
     SIZE_BODY,
@@ -98,8 +98,8 @@ class LaunchTemplate(DefaultTemplate):
 
         heading = clip(s.callout or s.heading, 120)
         body = clip(s.body, 140) if s.body else ""
-        bar_h = text_h(heading, self.head_size, lay.w - lay.pad * 2 - 48) + 48
-        body_h = (GAP + text_h(body, self.body_size, lay.w - lay.pad * 2)) if body else 0
+        bar_h = text_h(heading, self.head_px, lay.w - lay.pad * 2 - 48) + 48
+        body_h = (GAP + text_h(body, self.body_px, lay.w - lay.pad * 2)) if body else 0
         total_h = bar_h + body_h
         y = content_start_y(total_h, lay)
 
@@ -117,7 +117,7 @@ class LaunchTemplate(DefaultTemplate):
             heading,
             top=y + 24,
             lay=lay,
-            font_size=self.head_size,
+            font_size=self.head_px,
             font_weight="bold",
             fill=palette.accent_text,
             swibp_style="heading",
@@ -130,7 +130,7 @@ class LaunchTemplate(DefaultTemplate):
                 body,
                 top=y + bar_h + GAP,
                 lay=lay,
-                font_size=self.body_size,
+                font_size=self.body_px,
                 font_weight="500",
                 fill=palette.text,
                 swibp_style="body",
@@ -172,8 +172,8 @@ class HowtoTemplate(DefaultTemplate):
                 left=lay.pad,
                 top=lay.h * 0.22,
                 width=lay.w * 0.55,
-                font_size=160,
-                font_family=FONT,
+                font_size=scaled_size(70, kind="head"),
+                font_family=current_font(),
                 fill=palette.grid,
                 font_weight="700",
                 text_align="left",
@@ -190,7 +190,7 @@ class HowtoTemplate(DefaultTemplate):
         items = s.items or []
         callout = clip(s.callout, 120) if s.callout else ""
         total_h = stack_height(
-            heading, body, items, callout, lay, bullet=self.item_bullet, head_size=48, body_size=self.body_size
+            heading, body, items, callout, lay, bullet=self.item_bullet, head_size=48, body_size=self.body_px
         )
         y = content_start_y(total_h, lay)
 
@@ -198,7 +198,7 @@ class HowtoTemplate(DefaultTemplate):
             f"STEP {step_n}",
             top=y,
             lay=lay,
-            font_size=SIZE_META,
+            font_size=scaled_size(SIZE_META, kind="meta"),
             font_weight="600",
             fill=palette.accent,
             swibp_style="body",
@@ -206,7 +206,7 @@ class HowtoTemplate(DefaultTemplate):
         objs.append(label)
         head, bottom = text_block(
             heading,
-            top=y + SIZE_META + 12,
+            top=y + scaled_size(SIZE_META, kind="meta") + 12,
             lay=lay,
             font_size=48,
             font_weight="bold",
@@ -220,7 +220,7 @@ class HowtoTemplate(DefaultTemplate):
                 items_text(items, bullet=self.item_bullet),
                 top=next_top,
                 lay=lay,
-                font_size=self.body_size,
+                font_size=self.body_px,
                 font_weight="500",
                 fill=palette.text,
                 swibp_style="body",
@@ -232,7 +232,7 @@ class HowtoTemplate(DefaultTemplate):
                 body,
                 top=next_top,
                 lay=lay,
-                font_size=self.body_size,
+                font_size=self.body_px,
                 font_weight="500",
                 fill=palette.text,
                 swibp_style="body",
@@ -289,7 +289,7 @@ class OfferTemplate(DefaultTemplate):
         # Shift content right of rail
         inset = 18
         total_h = stack_height(
-            heading, body, items, callout, lay, bullet=self.item_bullet, head_size=self.head_size, body_size=self.body_size
+            heading, body, items, callout, lay, bullet=self.item_bullet, head_size=self.head_px, body_size=self.body_px
         )
         y = content_start_y(total_h, lay)
 
@@ -297,7 +297,7 @@ class OfferTemplate(DefaultTemplate):
             heading,
             top=y,
             lay=lay,
-            font_size=self.head_size,
+            font_size=self.head_px,
             font_weight="bold",
             fill=palette.text,
             swibp_style="heading",
@@ -313,7 +313,7 @@ class OfferTemplate(DefaultTemplate):
                 items_text(items, bullet=self.item_bullet),
                 top=next_top,
                 lay=lay,
-                font_size=self.body_size,
+                font_size=self.body_px,
                 font_weight="500",
                 fill=palette.text,
                 swibp_style="body",
@@ -327,7 +327,7 @@ class OfferTemplate(DefaultTemplate):
                 body,
                 top=next_top,
                 lay=lay,
-                font_size=self.body_size,
+                font_size=self.body_px,
                 font_weight="500",
                 fill=palette.text,
                 swibp_style="body",
@@ -380,8 +380,8 @@ class TipsTemplate(DefaultTemplate):
                 left=lay.pad,
                 top=lay.pad * 2.2,
                 width=lay.w - lay.pad * 2,
-                font_size=SIZE_META,
-                font_family=FONT,
+                font_size=scaled_size(SIZE_META, kind="meta"),
+                font_family=current_font(),
                 fill=palette.accent,
                 font_weight="700",
                 text_align="left",
@@ -396,14 +396,14 @@ class TipsTemplate(DefaultTemplate):
         heading = clip(s.heading, 110)
         body = clip(s.body, 240) if s.body else ""
         items = s.items or []
-        total_h = stack_height(heading, body, items, "", lay, head_size=self.head_size, body_size=self.body_size)
+        total_h = stack_height(heading, body, items, "", lay, head_size=self.head_px, body_size=self.body_px)
         y = content_start_y(total_h, lay, zone_top=lay.pad * 3.2)
 
         head, bottom = text_block(
             heading,
             top=y,
             lay=lay,
-            font_size=self.head_size,
+            font_size=self.head_px,
             font_weight="bold",
             fill=palette.text,
             swibp_style="heading",
@@ -415,7 +415,7 @@ class TipsTemplate(DefaultTemplate):
                 items_text(items, bullet=self.item_bullet),
                 top=next_top,
                 lay=lay,
-                font_size=self.body_size,
+                font_size=self.body_px,
                 font_weight="500",
                 fill=palette.text,
                 swibp_style="body",
@@ -426,7 +426,7 @@ class TipsTemplate(DefaultTemplate):
                 body,
                 top=next_top,
                 lay=lay,
-                font_size=self.body_size,
+                font_size=self.body_px,
                 font_weight="500",
                 fill=palette.text,
                 swibp_style="body",
@@ -463,8 +463,8 @@ class StoryTemplate(DefaultTemplate):
                 left=lay.pad,
                 top=lay.h * 0.28,
                 width=120,
-                font_size=120,
-                font_family=FONT,
+                font_size=scaled_size(70, kind="head"),
+                font_family=current_font(),
                 fill=palette.accent_text,
                 font_weight="700",
                 text_align="left",
@@ -520,13 +520,13 @@ class StoryTemplate(DefaultTemplate):
         items = s.items or []
         callout = clip(s.callout, 120) if s.callout else ""
         inset = 28
-        total_h = stack_height(heading, body, items, callout, lay, head_size=self.head_size, body_size=self.body_size)
+        total_h = stack_height(heading, body, items, callout, lay, head_size=self.head_px, body_size=self.body_px)
         y = content_start_y(total_h, lay)
         head, bottom = text_block(
             heading,
             top=y,
             lay=lay,
-            font_size=self.head_size,
+            font_size=self.head_px,
             font_weight="bold",
             fill=palette.text,
             swibp_style="heading",
@@ -540,7 +540,7 @@ class StoryTemplate(DefaultTemplate):
                 items_text(items, bullet=self.item_bullet),
                 top=next_top,
                 lay=lay,
-                font_size=self.body_size,
+                font_size=self.body_px,
                 font_weight="500",
                 fill=palette.text,
                 swibp_style="body",
@@ -554,7 +554,7 @@ class StoryTemplate(DefaultTemplate):
                 body,
                 top=next_top,
                 lay=lay,
-                font_size=self.body_size,
+                font_size=self.body_px,
                 font_weight="500",
                 fill=palette.text,
                 swibp_style="body",
@@ -610,10 +610,10 @@ class ComparisonTemplate(DefaultTemplate):
         right_items = items[mid:]
 
         col_w = (lay.w - lay.pad * 2 - 40) / 2
-        head_h = text_h(heading, self.head_size, lay.w - lay.pad * 2)
-        left_h = text_h(items_text(left_items, bullet="•") or "—", self.body_size, col_w) if items else 0
-        right_h = text_h(items_text(right_items, bullet="•") or "—", self.body_size, col_w) if items else 0
-        body_h = (GAP + text_h(body, self.body_size, lay.w - lay.pad * 2)) if body and not items else 0
+        head_h = text_h(heading, self.head_px, lay.w - lay.pad * 2)
+        left_h = text_h(items_text(left_items, bullet="•") or "—", self.body_px, col_w) if items else 0
+        right_h = text_h(items_text(right_items, bullet="•") or "—", self.body_px, col_w) if items else 0
+        body_h = (GAP + text_h(body, self.body_px, lay.w - lay.pad * 2)) if body and not items else 0
         cols_h = max(left_h, right_h) + 40 if items else 0
         total_h = head_h + GAP + cols_h + body_h
         y = content_start_y(total_h, lay)
@@ -622,7 +622,7 @@ class ComparisonTemplate(DefaultTemplate):
             heading,
             top=y,
             lay=lay,
-            font_size=self.head_size,
+            font_size=self.head_px,
             font_weight="bold",
             fill=palette.text,
             swibp_style="heading",
@@ -638,8 +638,8 @@ class ComparisonTemplate(DefaultTemplate):
                     left=lay.pad,
                     top=next_top,
                     width=col_w,
-                    font_size=SIZE_META,
-                    font_family=FONT,
+                    font_size=scaled_size(SIZE_META, kind="meta"),
+                    font_family=current_font(),
                     fill=palette.muted,
                     font_weight="700",
                     swibp_style="body",
@@ -651,15 +651,15 @@ class ComparisonTemplate(DefaultTemplate):
                     left=lay.pad + col_w + 40,
                     top=next_top,
                     width=col_w,
-                    font_size=SIZE_META,
-                    font_family=FONT,
+                    font_size=scaled_size(SIZE_META, kind="meta"),
+                    font_family=current_font(),
                     fill=palette.accent,
                     font_weight="700",
                     swibp_style="body",
                     swibp_slot="accent",
                 )
             )
-            next_top += SIZE_META + 12
+            next_top += scaled_size(SIZE_META, kind="meta") + 12
             # Divider
             objs.append(
                 rect(
@@ -675,7 +675,7 @@ class ComparisonTemplate(DefaultTemplate):
                 items_text(left_items, bullet="•") or "—",
                 top=next_top,
                 lay=lay,
-                font_size=self.body_size,
+                font_size=self.body_px,
                 font_weight="500",
                 fill=palette.text,
                 swibp_style="body",
@@ -686,7 +686,7 @@ class ComparisonTemplate(DefaultTemplate):
                 items_text(right_items, bullet="•") or "—",
                 top=next_top,
                 lay=lay,
-                font_size=self.body_size,
+                font_size=self.body_px,
                 font_weight="500",
                 fill=palette.text,
                 swibp_style="body",
@@ -699,7 +699,7 @@ class ComparisonTemplate(DefaultTemplate):
                 body,
                 top=next_top,
                 lay=lay,
-                font_size=self.body_size,
+                font_size=self.body_px,
                 font_weight="500",
                 fill=palette.text,
                 swibp_style="body",
@@ -743,14 +743,14 @@ class ChecklistTemplate(DefaultTemplate):
         callout = clip(s.callout, 100) if s.callout else ""
         # Prefer items as checklist rows
         total_h = stack_height(
-            heading, "", items, callout, lay, bullet=self.item_bullet, head_size=self.head_size, body_size=28
+            heading, "", items, callout, lay, bullet=self.item_bullet, head_size=self.head_px, body_size=28
         )
         y = content_start_y(total_h, lay)
         head, bottom = text_block(
             heading,
             top=y,
             lay=lay,
-            font_size=self.head_size,
+            font_size=self.head_px,
             font_weight="bold",
             fill=palette.text,
             swibp_style="heading",
@@ -806,10 +806,10 @@ class MythsTemplate(DefaultTemplate):
         # heading = myth; callout (or body) = truth
         truth = clip(s.callout or body, 160) if (s.callout or body) else ""
         total_h = (
-            SIZE_META
+            scaled_size(SIZE_META, kind="meta")
             + 12
-            + text_h(heading, self.head_size, lay.w - lay.pad * 2)
-            + (GAP + text_h(truth, SIZE_BODY, lay.w - lay.pad * 2 - 32) + 48 if truth else 0)
+            + text_h(heading, self.head_px, lay.w - lay.pad * 2)
+            + (GAP + text_h(truth, scaled_size(SIZE_BODY, kind="body"), lay.w - lay.pad * 2 - 32) + 48 if truth else 0)
         )
         y = content_start_y(total_h, lay)
 
@@ -819,8 +819,8 @@ class MythsTemplate(DefaultTemplate):
                 left=lay.pad,
                 top=y,
                 width=200,
-                font_size=SIZE_META,
-                font_family=FONT,
+                font_size=scaled_size(SIZE_META, kind="meta"),
+                font_family=current_font(),
                 fill=palette.muted,
                 font_weight="700",
                 text_align="left",
@@ -830,9 +830,9 @@ class MythsTemplate(DefaultTemplate):
         )
         head, bottom = text_block(
             heading,
-            top=y + SIZE_META + 12,
+            top=y + scaled_size(SIZE_META, kind="meta") + 12,
             lay=lay,
-            font_size=self.head_size,
+            font_size=self.head_px,
             font_weight="bold",
             fill=palette.text,
             swibp_style="heading",
@@ -876,7 +876,7 @@ class FrameworkTemplate(DefaultTemplate):
         body = clip(s.body, 200) if s.body else ""
         items = s.items or []
         puck = 64
-        total_h = stack_height(heading, body, items, "", lay, head_size=48, body_size=self.body_size) + 8
+        total_h = stack_height(heading, body, items, "", lay, head_size=48, body_size=self.body_px) + 8
         y = content_start_y(total_h, lay)
 
         objs.append(
@@ -898,7 +898,7 @@ class FrameworkTemplate(DefaultTemplate):
                 top=y + 14,
                 width=puck,
                 font_size=32,
-                font_family=FONT,
+                font_family=current_font(),
                 fill=palette.accent_text,
                 font_weight="700",
                 text_align="center",
@@ -925,7 +925,7 @@ class FrameworkTemplate(DefaultTemplate):
                 items_text(items, bullet=self.item_bullet),
                 top=next_top,
                 lay=lay,
-                font_size=self.body_size,
+                font_size=self.body_px,
                 font_weight="500",
                 fill=palette.text,
                 swibp_style="body",
@@ -936,7 +936,7 @@ class FrameworkTemplate(DefaultTemplate):
                 body,
                 top=next_top,
                 lay=lay,
-                font_size=self.body_size,
+                font_size=self.body_px,
                 font_weight="500",
                 fill=palette.text,
                 swibp_style="body",
@@ -983,8 +983,8 @@ class PricingTemplate(DefaultTemplate):
         total_h = (
             text_h(heading, 44, lay.w - lay.pad * 2)
             + (GAP + price_block_h if price else 0)
-            + (GAP + text_h(items_text(rest, bullet=self.item_bullet), self.body_size, lay.w - lay.pad * 2) if rest else 0)
-            + (GAP + text_h(body, self.body_size, lay.w - lay.pad * 2) if body and not rest else 0)
+            + (GAP + text_h(items_text(rest, bullet=self.item_bullet), self.body_px, lay.w - lay.pad * 2) if rest else 0)
+            + (GAP + text_h(body, self.body_px, lay.w - lay.pad * 2) if body and not rest else 0)
         )
         y = content_start_y(total_h, lay)
 
@@ -1009,7 +1009,7 @@ class PricingTemplate(DefaultTemplate):
                 items_text(rest, bullet=self.item_bullet),
                 top=next_top,
                 lay=lay,
-                font_size=self.body_size,
+                font_size=self.body_px,
                 font_weight="500",
                 fill=palette.text,
                 swibp_style="body",
@@ -1020,7 +1020,7 @@ class PricingTemplate(DefaultTemplate):
                 body,
                 top=next_top,
                 lay=lay,
-                font_size=self.body_size,
+                font_size=self.body_px,
                 font_weight="500",
                 fill=palette.text,
                 swibp_style="body",

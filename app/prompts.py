@@ -96,7 +96,7 @@ def carousel_user(
         f"Тема: {topic}\n"
         f"Язык: {lang}\n"
         f"Число слайдов: ровно {slides_count}\n"
-        f"Хэндл (контекст): {handle}\n"
+        f"Хэндл (контекст, может быть пустым): {handle or '—'}\n"
         f"{mood_line}"
         f"{skill_line}"
         f"design.hasCover={str(has_cover).lower()}\n"
@@ -139,4 +139,66 @@ def palette_user(*, topic: str, language: str, mood: str = "") -> str:
         f"{mood_line}"
         "Подбери смелую, запоминающуюся палитру под эту тему. "
         "Избегай дефолтного белого + пыльно-розового."
+    )
+
+
+TYPOGRAPHY_SYSTEM = """Ты арт-директор типографики для Instagram/Threads-каруселей.
+Выбери ОДИН шрифт из списка и подходящую шкалу размеров под тему и mood.
+Все шрифты в списке поддерживают кириллицу и латиницу (ru + en).
+Верни ТОЛЬКО валидный JSON без markdown.
+
+Схема:
+{
+  "fontFamily": "точное имя из списка",
+  "typeScale": "compact|balanced|editorial|display|dense|airy|poster|magazine",
+  "headSize": 55,
+  "bodySize": 25,
+  "metaSize": 20
+}
+
+Правила:
+- fontFamily ОБЯЗАН быть точной строкой из переданного списка шрифтов.
+- typeScale — характер набора:
+  compact / dense — много текста, советы, чеклисты;
+  balanced — универсальный default;
+  editorial / magazine — длинные заголовки, storytelling, luxury;
+  display / poster — короткий punchy hook, cover-энергия;
+  airy — lifestyle, breathing room.
+- headSize 32–70 (жёсткий максимум 70), bodySize 16–36, metaSize 12–24; согласуй с typeScale.
+- Serif (Playfair Display, Lora, Merriweather, PT Serif) — editorial / luxury / storytelling.
+- Geometric / friendly sans (Poppins, Montserrat, Nunito, Rubik, Onest, Unbounded) —
+  lifestyle, creator, modern.
+- Neutral UI sans (Inter, Roboto, Open Sans, Lato, Manrope, Raleway, Ubuntu, Noto Sans, IBM Plex Sans) —
+  education, business, tips.
+- Condensed display (Oswald, Unbounded) — bold covers / poster; не для длинного body.
+- Не повторяй Montserrat каждый раз — варьируй под mood."""
+
+
+def typography_user(
+    *,
+    topic: str,
+    language: str,
+    mood: str = "",
+    fonts: tuple[str, ...] | list[str],
+    scales: tuple[str, ...] | list[str],
+    font_locked: str | None = None,
+) -> str:
+    lang = "русском" if language.startswith("ru") else "английском"
+    mood_line = f"Mood: {mood}\n" if mood else ""
+    fonts_line = ", ".join(fonts)
+    scales_line = ", ".join(scales)
+    lock_line = (
+        f"Шрифт УЖЕ выбран пользователем: {font_locked}. Верни именно его в fontFamily; "
+        "подбери только typeScale и размеры.\n"
+        if font_locked
+        else "Выбери шрифт из списка сам.\n"
+    )
+    return (
+        f"Тема карусели: {topic}\n"
+        f"Язык: {lang}\n"
+        f"{mood_line}"
+        f"{lock_line}"
+        f"Допустимые шрифты: {fonts_line}\n"
+        f"Допустимые typeScale: {scales_line}\n"
+        "Подбери типографику под тему и mood."
     )

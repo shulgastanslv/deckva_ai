@@ -9,9 +9,18 @@ from dataclasses import dataclass
 from typing import Any, ClassVar
 
 from app.fabric import canvas_size, image, normalize_aspect, rect, slide, textbox
+from app.fonts import (
+    Typography,
+    current_font,
+    current_typography,
+    push_typography,
+    reset_typography,
+    scaled_size,
+)
 from app.palette import Palette
 from app.schemas import CarouselContent, SlideContent
 
+# Back-compat alias: prefer current_font() / scaled_size()
 FONT = "Montserrat"
 SIZE_HEAD = 55
 SIZE_BODY = 25
@@ -20,6 +29,18 @@ GAP = 20
 LINE_HEIGHT = 0.90
 GRID_OPACITY = 0.22
 PHOTO_TEXT_GAP = 2
+
+
+def _font() -> str:
+    return current_font()
+
+
+def _meta_size() -> int:
+    return current_typography().meta_size
+
+
+def _body_size() -> int:
+    return current_typography().body_size
 
 
 @dataclass
@@ -36,7 +57,11 @@ def make_layout(w: int, h: int) -> L:
 
 
 def handle_text(h: str) -> str:
-    h = h.strip()
+    h = (h or "").strip()
+    if not current_typography().show_handle:
+        if not h:
+            return ""
+        return h if h.startswith("@") else f"@{h}"
     if not h:
         raise RuntimeError("Не указан handle.")
     return h if h.startswith("@") else f"@{h}"
@@ -116,13 +141,14 @@ def grid(
 
 
 def counter(index: int, lay: L, *, fill: str) -> dict[str, Any]:
+    meta = _meta_size()
     return textbox(
         f"( {index + 1} )",
         left=lay.w - lay.pad - 140,
         top=lay.pad * 0.7,
         width=140,
-        font_size=SIZE_META,
-        font_family=FONT,
+        font_size=meta,
+        font_family=_font(),
         fill=fill,
         font_weight="600",
         text_align="right",
@@ -133,14 +159,15 @@ def counter(index: int, lay: L, *, fill: str) -> dict[str, Any]:
 
 
 def footer(lay: L, category: str, *, fill_cat: str, fill_arrow: str) -> list[dict[str, Any]]:
+    meta = _meta_size()
     return [
         textbox(
             clip(category, 24),
             left=lay.pad,
-            top=lay.h - lay.pad - SIZE_META,
+            top=lay.h - lay.pad - meta,
             width=lay.w * 0.45,
-            font_size=SIZE_META,
-            font_family=FONT,
+            font_size=meta,
+            font_family=_font(),
             fill=fill_cat,
             font_weight="500",
             text_align="left",
@@ -150,10 +177,10 @@ def footer(lay: L, category: str, *, fill_cat: str, fill_arrow: str) -> list[dic
         textbox(
             "→",
             left=lay.w - lay.pad - 48,
-            top=lay.h - lay.pad - SIZE_META - 4,
+            top=lay.h - lay.pad - meta - 4,
             width=48,
             font_size=32,
-            font_family=FONT,
+            font_family=_font(),
             fill=fill_arrow,
             font_weight="bold",
             text_align="right",
@@ -186,7 +213,7 @@ def text_block(
         width=w,
         height=h,
         font_size=font_size,
-        font_family=FONT,
+        font_family=_font(),
         fill=fill,
         font_weight=font_weight,
         text_align="left",
@@ -254,8 +281,10 @@ def callout_block(
     x = lay.pad if left is None else left
     w = (lay.w - lay.pad * 2) if width is None else width
     pad_y = 14
+    body = _body_size()
+    meta = _meta_size()
     label_h = 22 if label else 0
-    th = text_h(text, SIZE_BODY, w - 32) + pad_y * 2 + label_h
+    th = text_h(text, body, w - 32) + pad_y * 2 + label_h
     objs: list[dict[str, Any]] = [
         rect(
             left=x,
@@ -276,8 +305,8 @@ def callout_block(
                 left=x + 16,
                 top=y,
                 width=w - 32,
-                font_size=SIZE_META,
-                font_family=FONT,
+                font_size=meta,
+                font_family=_font(),
                 fill=palette.accent_text,
                 font_weight="600",
                 text_align="left",
@@ -294,8 +323,8 @@ def callout_block(
             top=y,
             width=w - 32,
             height=th - (y - top) - pad_y,
-            font_size=SIZE_BODY,
-            font_family=FONT,
+            font_size=body,
+            font_family=_font(),
             fill=palette.accent_text,
             font_weight="700",
             text_align="left",
@@ -327,12 +356,12 @@ def meta_handle(
     font_weight: str | int = "500",
 ) -> dict[str, Any]:
     return textbox(
-        handle,
+        handle or "",
         left=lay.pad,
         top=lay.pad * 0.7,
         width=lay.w * 0.45,
-        font_size=SIZE_META,
-        font_family=FONT,
+        font_size=_meta_size(),
+        font_family=_font(),
         fill=fill,
         font_weight=font_weight,
         text_align="left",
@@ -342,6 +371,14 @@ def meta_handle(
     )
 
 
+def _strip_handles(slide_obj: dict[str, Any]) -> dict[str, Any]:
+    if current_typography().show_handle:
+        return slide_obj
+    objs = slide_obj.get("objects") or []
+    slide_obj["objects"] = [o for o in objs if o.get("swibpRole") != "handle"]
+    return slide_obj
+
+
 class CarouselTemplate(ABC):
     """One visual system for a skill (or the default when skill is unset)."""
 
@@ -349,6 +386,14 @@ class CarouselTemplate(ABC):
     item_bullet: ClassVar[str] = "→"
     head_size: ClassVar[int] = SIZE_HEAD
     body_size: ClassVar[int] = SIZE_BODY
+
+    @property
+    def head_px(self) -> int:
+        return scaled_size(type(self).head_size, kind="head")
+
+    @property
+    def body_px(self) -> int:
+        return scaled_size(type(self).body_size, kind="body")
 
     def design_defaults(self) -> dict[str, Any]:
         return {"hasCover": True, "gridMode": "edges", "accentBias": 0.45, "photoRatio": 0.48}
@@ -470,7 +515,7 @@ class CarouselTemplate(ABC):
         )
 
         if layout == "cover":
-            return self.layout_cover(
+            out = self.layout_cover(
                 s,
                 lay,
                 handle,
@@ -481,21 +526,23 @@ class CarouselTemplate(ABC):
                 cover_src=photo,
                 photo_ratio=photo_ratio,
             )
-        if layout == "orange_quote":
-            return self.layout_accent_quote(s, lay, handle, category, palette, index=index)
-        if layout == "cta":
-            return self.layout_cta(
+        elif layout == "orange_quote":
+            out = self.layout_accent_quote(s, lay, handle, category, palette, index=index)
+        elif layout == "cta":
+            out = self.layout_cta(
                 s, lay, handle, category, palette, index=index, with_grid=with_grid
             )
-        return self.layout_content(
-            s,
-            lay,
-            handle,
-            category,
-            palette,
-            index=index,
-            with_grid=with_grid and grid_mode == "all",
-        )
+        else:
+            out = self.layout_content(
+                s,
+                lay,
+                handle,
+                category,
+                palette,
+                index=index,
+                with_grid=with_grid and grid_mode == "all",
+            )
+        return _strip_handles(out)
 
     def build_carousel(
         self,
@@ -506,49 +553,73 @@ class CarouselTemplate(ABC):
         seed: int | None = None,
         design: dict[str, Any] | None = None,
         slide_photos: list[str] | None = None,
+        typography: Typography | None = None,
     ) -> dict[str, Any]:
         aspect = normalize_aspect(aspect_ratio)
         w, h = canvas_size(aspect)
         rng = random.Random(seed)
         lay = make_layout(w, h)
-        handle = handle_text(content.handle)
-        category = content.category.strip()
-        if not category:
-            raise RuntimeError("Не указан category.")
-        total = len(content.slides)
-        if total < 1:
-            raise RuntimeError("Нет слайдов для сборки.")
-
         design = self.merge_design(design)
-        cover_src = content.cover if design.get("hasCover") else ""
-        photos = list(slide_photos or [])
+        typo = typography
+        if typo is None and isinstance(design.get("typography"), dict):
+            from app.fonts import parse_typography
 
-        slides_out = [
-            self.build_slide(
-                s,
-                index=i,
-                total=total,
-                lay=lay,
-                handle=handle,
-                category=category,
-                cover_src=cover_src,
-                palette=palette,
-                rng=rng,
-                design=design,
-                slide_photo=photos[i] if i < len(photos) else "",
+            typo = parse_typography(
+                design["typography"],
+                show_handle=bool(design.get("showHandle", True)),
             )
-            for i, s in enumerate(content.slides)
-        ]
+        if typo is None:
+            typo = current_typography()
 
-        return {
-            "title": content.title,
-            "aspectRatio": aspect,
-            "width": w,
-            "height": h,
-            "design": design,
-            "templateId": self.skill_id or "default",
-            "slides": slides_out,
-        }
+        token = push_typography(typo)
+        try:
+            handle = handle_text(content.handle)
+            category = content.category.strip()
+            if not category:
+                raise RuntimeError("Не указан category.")
+            total = len(content.slides)
+            if total < 1:
+                raise RuntimeError("Нет слайдов для сборки.")
+
+            cover_src = content.cover if design.get("hasCover") else ""
+            photos = list(slide_photos or [])
+
+            slides_out = [
+                self.build_slide(
+                    s,
+                    index=i,
+                    total=total,
+                    lay=lay,
+                    handle=handle,
+                    category=category,
+                    cover_src=cover_src,
+                    palette=palette,
+                    rng=rng,
+                    design=design,
+                    slide_photo=photos[i] if i < len(photos) else "",
+                )
+                for i, s in enumerate(content.slides)
+            ]
+
+            design = {
+                **design,
+                "typography": typo.to_dict(),
+                "fontFamily": typo.font_family,
+                "showHandle": typo.show_handle,
+            }
+
+            return {
+                "title": content.title,
+                "aspectRatio": aspect,
+                "width": w,
+                "height": h,
+                "design": design,
+                "typography": typo.to_dict(),
+                "templateId": self.skill_id or "default",
+                "slides": slides_out,
+            }
+        finally:
+            reset_typography(token)
 
 
 # Re-export fabric primitives used by subclasses
@@ -566,6 +637,7 @@ __all__ = [
     "clip",
     "content_start_y",
     "counter",
+    "current_font",
     "footer",
     "grid",
     "handle_text",
@@ -574,6 +646,7 @@ __all__ = [
     "make_layout",
     "meta_handle",
     "rect",
+    "scaled_size",
     "slide",
     "stack_height",
     "text_block",
