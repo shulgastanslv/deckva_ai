@@ -1,521 +1,57 @@
-"""Шаблоны карусели: left-align, вертикальный центр, палитра."""
+"""Back-compat facade: carousel assemble via template registry.
+
+Prefer `app.templates` for new code. Default template = original layout
+when skill is unset; skill_id selects a registered skill template.
+"""
 
 from __future__ import annotations
 
-import random
-import re
-from dataclasses import dataclass
-from typing import Any
+from app.templates import (
+    CarouselTemplate,
+    DefaultTemplate,
+    build_carousel,
+    get_template,
+    list_skill_template_ids,
+    register,
+)
+from app.templates.base import (
+    L,
+    callout_block,
+    clip,
+    content_start_y,
+    counter,
+    footer,
+    grid,
+    handle_text as _handle,
+    items_text as _items_text,
+    make_layout as _L,
+    meta_handle,
+    stack_height as _stack_height,
+    text_block as _text_block,
+    text_h as _text_h,
+    with_grid_for as _with_grid_for,
+)
 
-from app.fabric import canvas_size, image, normalize_aspect, rect, slide, textbox
-from app.palette import Palette
-from app.schemas import CarouselContent, SlideContent
-
-FONT = "Montserrat"
-SIZE_HEAD = 55
-SIZE_BODY = 25
-SIZE_META = 20
-GAP = 20
-LINE_HEIGHT = 0.90
-GRID_OPACITY = 0.22
-PHOTO_TEXT_GAP = 2
-
-
-@dataclass
-class L:
-    w: int
-    h: int
-    pad: float
-    step: float
-
-
-def _L(w: int, h: int) -> L:
-    base = min(w, h)
-    return L(w=w, h=h, pad=max(48, base * 0.06), step=max(72, base * 0.085))
-
-
-def _handle(h: str) -> str:
-    h = h.strip()
-    if not h:
-        raise RuntimeError("Не указан handle.")
-    return h if h.startswith("@") else f"@{h}"
-
-
-def _clip(t: str, n: int) -> str:
-    t = (t or "").strip()
-    return t if len(t) <= n else t[: n - 1].rstrip() + "…"
-
-
-def _line_count(text: str, font_size: int, width: float) -> int:
-    avg = font_size * 0.62
-    total = 0
-    for para in (text or " ").split("\n"):
-        if not para.strip():
-            total += 1
-            continue
-        words = para.split()
-        cur = 0.0
-        lines = 1
-        for w in words:
-            ww = len(w) * avg + avg * 0.4
-            if cur + ww > width and cur > 0:
-                lines += 1
-                cur = ww
-            else:
-                cur += ww
-        total += lines
-    return max(1, total)
-
-
-def _text_h(text: str, font_size: int, width: float) -> float:
-    lines = _line_count(text, font_size, width)
-    return lines * font_size * max(LINE_HEIGHT, 0.95) + 4
-
-
-def _grid(w: int, h: int, step: float, palette: Palette, *, top: float = 0, height: float | None = None) -> list[dict[str, Any]]:
-    hh = height if height is not None else h - top
-    objs: list[dict[str, Any]] = []
-    x = 0.0
-    while x <= w + 0.5:
-        objs.append(rect(left=x, top=top, width=1.2, height=hh, fill=palette.grid, opacity=GRID_OPACITY, swibp_slot="accent"))
-        x += step
-    y = top
-    while y <= top + hh + 0.5:
-        objs.append(rect(left=0, top=y, width=w, height=1.2, fill=palette.grid, opacity=GRID_OPACITY, swibp_slot="accent"))
-        y += step
-    return objs
-
-
-def _counter(index: int, lay: L, *, fill: str) -> dict[str, Any]:
-    return textbox(
-        f"( {index + 1} )",
-        left=lay.w - lay.pad - 140,
-        top=lay.pad * 0.7,
-        width=140,
-        font_size=SIZE_META,
-        font_family=FONT,
-        fill=fill,
-        font_weight="600",
-        text_align="right",
-        line_height=LINE_HEIGHT,
-        swibp_style="body",
-        swibp_role="counter",
-    )
-
-
-def _footer(lay: L, category: str, *, fill_cat: str, fill_arrow: str) -> list[dict[str, Any]]:
-    return [
-        textbox(
-            _clip(category, 24),
-            left=lay.pad,
-            top=lay.h - lay.pad - SIZE_META,
-            width=lay.w * 0.45,
-            font_size=SIZE_META,
-            font_family=FONT,
-            fill=fill_cat,
-            font_weight="500",
-            text_align="left",
-            line_height=LINE_HEIGHT,
-            swibp_style="body",
-        ),
-        textbox(
-            "→",
-            left=lay.w - lay.pad - 48,
-            top=lay.h - lay.pad - SIZE_META - 4,
-            width=48,
-            font_size=32,
-            font_family=FONT,
-            fill=fill_arrow,
-            font_weight="bold",
-            text_align="right",
-            line_height=LINE_HEIGHT,
-            swibp_style="body",
-            swibp_slot="accent",
-        ),
-    ]
-
-
-def _text_block(
-    text: str,
-    *,
-    top: float,
-    lay: L,
-    font_size: int,
-    font_weight: str | int = "bold",
-    fill: str,
-    swibp_style: str = "heading",
-) -> tuple[dict[str, Any], float]:
-    width = lay.w - lay.pad * 2
-    h = _text_h(text, font_size, width)
-    obj = textbox(
-        text,
-        left=lay.pad,
-        top=top,
-        width=width,
-        height=h,
-        font_size=font_size,
-        font_family=FONT,
-        fill=fill,
-        font_weight=font_weight,
-        text_align="left",
-        line_height=LINE_HEIGHT,
-        swibp_style=swibp_style,
-    )
-    return obj, top + h
-
-
-def _items_text(items: list[str]) -> str:
-    lines = []
-    for raw in items:
-        t = re.sub(r"^[\s→\-\d\.]+", "", (raw or "").strip())
-        if t:
-            lines.append(f"→ {t}")
-    return "\n".join(lines)
-
-
-def _stack_height(heading: str, body: str, items: list[str], callout: str, lay: L) -> float:
-    width = lay.w - lay.pad * 2
-    h = _text_h(heading, SIZE_HEAD, width)
-    if items:
-        h += GAP + _text_h(_items_text(items), SIZE_BODY, width)
-    elif body:
-        h += GAP + _text_h(body, SIZE_BODY, width)
-    if callout:
-        h += GAP + _text_h(callout, SIZE_BODY, width - 32) + 28
-    return h
-
-
-def _content_start_y(total_h: float, lay: L, *, zone_top: float = 0, zone_bottom: float | None = None) -> float:
-    bottom = zone_bottom if zone_bottom is not None else lay.h
-    y = zone_top + (bottom - zone_top - total_h) / 2
-    min_y = zone_top + (PHOTO_TEXT_GAP if zone_top > 0 else lay.pad * 1.8)
-    max_y = bottom - total_h - lay.pad * 2.2
-    return max(min_y, min(y, max_y))
-
-
-def _callout_block(text: str, *, top: float, lay: L, palette: Palette) -> tuple[list[dict[str, Any]], float]:
-    width = lay.w - lay.pad * 2
-    pad_y = 14
-    th = _text_h(text, SIZE_BODY, width - 32) + pad_y * 2
-    objs = [
-        rect(left=lay.pad, top=top, width=width, height=th, fill=palette.accent, rx=0, ry=0, swibp_slot="accent"),
-        textbox(
-            text,
-            left=lay.pad + 16,
-            top=top + pad_y,
-            width=width - 32,
-            height=th - pad_y * 2,
-            font_size=SIZE_BODY,
-            font_family=FONT,
-            fill=palette.accent_text,
-            font_weight="700",
-            text_align="left",
-            line_height=LINE_HEIGHT,
-            swibp_style="heading",
-            swibp_slot="accent",
-        ),
-    ]
-    return objs, top + th
-
-
-def layout_cover(
-    s: SlideContent,
-    lay: L,
-    handle: str,
-    category: str,
-    palette: Palette,
-    *,
-    index: int,
-    with_grid: bool,
-    cover_src: str,
-) -> dict[str, Any]:
-    photo_h = lay.h * 0.48
-    if cover_src.strip():
-        objs: list[dict[str, Any]] = [
-            image(cover_src.strip(), left=0, top=0, width=lay.w, height=photo_h, swibp_slot="image")
-        ]
-    else:
-        objs = [rect(left=0, top=0, width=lay.w, height=photo_h, fill=palette.photo, swibp_slot="image")]
-
-    if with_grid:
-        objs.extend(_grid(lay.w, lay.h, lay.step, palette, top=photo_h, height=lay.h - photo_h))
-
-    objs.append(
-        textbox(
-            handle,
-            left=lay.pad,
-            top=lay.pad * 0.7,
-            width=lay.w * 0.45,
-            font_size=SIZE_META,
-            font_family=FONT,
-            fill="#FFFFFF",
-            font_weight="600",
-            text_align="left",
-            line_height=LINE_HEIGHT,
-            swibp_style="body",
-            swibp_role="handle",
-        )
-    )
-    objs.append(_counter(index, lay, fill="#FFFFFF"))
-
-    heading = _clip(s.heading, 120)
-    body = _clip(s.body, 200) if s.body else ""
-    total_h = _stack_height(heading, body, [], "", lay)
-    y = _content_start_y(total_h, lay, zone_top=photo_h + PHOTO_TEXT_GAP, zone_bottom=lay.h)
-    y = max(y, photo_h + PHOTO_TEXT_GAP)
-
-    head, bottom = _text_block(
-        heading, top=y, lay=lay, font_size=SIZE_HEAD, font_weight="bold", fill=palette.text, swibp_style="heading"
-    )
-    objs.append(head)
-    if body:
-        b, _ = _text_block(
-            body, top=bottom + GAP, lay=lay, font_size=SIZE_BODY, font_weight="500", fill=palette.text, swibp_style="body"
-        )
-        objs.append(b)
-
-    objs.extend(_footer(lay, category, fill_cat=palette.muted, fill_arrow=palette.text))
-    return slide(palette.bg, objs, width=lay.w, height=lay.h)
-
-
-def layout_content(
-    s: SlideContent,
-    lay: L,
-    handle: str,
-    category: str,
-    palette: Palette,
-    *,
-    index: int,
-    with_grid: bool,
-) -> dict[str, Any]:
-    objs: list[dict[str, Any]] = []
-    if with_grid:
-        objs.extend(_grid(lay.w, lay.h, lay.step, palette))
-
-    objs.append(
-        textbox(
-            handle,
-            left=lay.pad,
-            top=lay.pad * 0.7,
-            width=lay.w * 0.45,
-            font_size=SIZE_META,
-            font_family=FONT,
-            fill=palette.text,
-            font_weight="500",
-            text_align="left",
-            line_height=LINE_HEIGHT,
-            swibp_style="body",
-            swibp_role="handle",
-        )
-    )
-    objs.append(_counter(index, lay, fill=palette.text))
-
-    heading = _clip(s.heading, 140)
-    body = _clip(s.body, 220) if s.body else ""
-    items = s.items or []
-    callout = _clip(s.callout, 140) if s.callout else ""
-    total_h = _stack_height(heading, body, items, callout, lay)
-    y = _content_start_y(total_h, lay)
-
-    head, bottom = _text_block(
-        heading, top=y, lay=lay, font_size=SIZE_HEAD, font_weight="bold", fill=palette.text, swibp_style="heading"
-    )
-    objs.append(head)
-
-    next_top = bottom + GAP
-    if items:
-        block, bottom = _text_block(
-            _items_text(items),
-            top=next_top,
-            lay=lay,
-            font_size=SIZE_BODY,
-            font_weight="500",
-            fill=palette.text,
-            swibp_style="body",
-        )
-        objs.append(block)
-        next_top = bottom + GAP
-    elif body:
-        block, bottom = _text_block(
-            body, top=next_top, lay=lay, font_size=SIZE_BODY, font_weight="500", fill=palette.text, swibp_style="body"
-        )
-        objs.append(block)
-        next_top = bottom + GAP
-
-    if callout:
-        call_objs, _ = _callout_block(callout, top=next_top, lay=lay, palette=palette)
-        objs.extend(call_objs)
-
-    objs.extend(_footer(lay, category, fill_cat=palette.muted, fill_arrow=palette.text))
-    return slide(palette.bg, objs, width=lay.w, height=lay.h)
-
-
-def layout_accent_quote(
-    s: SlideContent,
-    lay: L,
-    handle: str,
-    category: str,
-    palette: Palette,
-    *,
-    index: int,
-) -> dict[str, Any]:
-    objs: list[dict[str, Any]] = [
-        textbox(
-            handle,
-            left=lay.pad,
-            top=lay.pad * 0.7,
-            width=lay.w * 0.45,
-            font_size=SIZE_META,
-            font_family=FONT,
-            fill=palette.accent_text,
-            font_weight="500",
-            line_height=LINE_HEIGHT,
-            swibp_role="handle",
-            swibp_style="body",
-        )
-    ]
-    objs.append(_counter(index, lay, fill=palette.accent_text))
-
-    heading = _clip(s.heading, 180)
-    total_h = _stack_height(heading, "", [], "", lay)
-    y = _content_start_y(total_h, lay)
-    head, _ = _text_block(
-        heading,
-        top=y,
-        lay=lay,
-        font_size=SIZE_HEAD,
-        font_weight="bold",
-        fill=palette.accent_text,
-        swibp_style="heading",
-    )
-    objs.append(head)
-    objs.extend(_footer(lay, category, fill_cat=palette.accent_text, fill_arrow=palette.accent_text))
-    return slide(palette.accent, objs, width=lay.w, height=lay.h)
-
-
-def layout_cta(
-    s: SlideContent,
-    lay: L,
-    handle: str,
-    category: str,
-    palette: Palette,
-    *,
-    index: int,
-    with_grid: bool,
-) -> dict[str, Any]:
-    objs: list[dict[str, Any]] = []
-    if with_grid:
-        objs.extend(_grid(lay.w, lay.h, lay.step, palette))
-
-    objs.append(
-        textbox(
-            handle,
-            left=lay.pad,
-            top=lay.pad * 0.7,
-            width=lay.w * 0.45,
-            font_size=SIZE_META,
-            font_family=FONT,
-            fill=palette.text,
-            font_weight="500",
-            line_height=LINE_HEIGHT,
-            swibp_role="handle",
-            swibp_style="body",
-        )
-    )
-    objs.append(_counter(index, lay, fill=palette.text))
-
-    heading = _clip(s.callout or s.heading, 140)
-    body = _clip(s.body, 160) if s.body else ""
-    total_h = _stack_height(heading, body, [], "", lay)
-    y = _content_start_y(total_h, lay)
-
-    head, bottom = _text_block(
-        heading, top=y, lay=lay, font_size=SIZE_HEAD, font_weight="bold", fill=palette.text, swibp_style="heading"
-    )
-    objs.append(head)
-    if body:
-        b, _ = _text_block(
-            body, top=bottom + GAP, lay=lay, font_size=SIZE_BODY, font_weight="500", fill=palette.text, swibp_style="body"
-        )
-        objs.append(b)
-
-    objs.extend(_footer(lay, category, fill_cat=palette.muted, fill_arrow=palette.text))
-    return slide(palette.bg, objs, width=lay.w, height=lay.h)
-
-
-def build_slide(
-    s: SlideContent,
-    *,
-    index: int,
-    total: int,
-    lay: L,
-    handle: str,
-    category: str,
-    cover_src: str,
-    palette: Palette,
-    rng: random.Random,
-) -> dict[str, Any]:
-    is_first = index == 0
-    is_last = index == total - 1
-    with_grid = is_first or is_last
-
-    layout = s.layout
-    if is_first:
-        layout = "cover"
-    elif is_last:
-        layout = "cta"
-    elif layout == "orange_quote" and rng.random() > 0.30:
-        layout = "statement"
-
-    if layout == "cover":
-        return layout_cover(
-            s, lay, handle, category, palette, index=index, with_grid=with_grid, cover_src=cover_src
-        )
-    if layout == "orange_quote":
-        return layout_accent_quote(s, lay, handle, category, palette, index=index)
-    if layout == "cta":
-        return layout_cta(s, lay, handle, category, palette, index=index, with_grid=with_grid)
-    return layout_content(s, lay, handle, category, palette, index=index, with_grid=False)
-
-
-def build_carousel(
-    content: CarouselContent,
-    *,
-    aspect_ratio: str,
-    palette: Palette,
-    seed: int | None = None,
-) -> dict[str, Any]:
-    aspect = normalize_aspect(aspect_ratio)
-    w, h = canvas_size(aspect)
-    rng = random.Random(seed)
-    lay = _L(w, h)
-    handle = _handle(content.handle)
-    category = content.category.strip()
-    if not category:
-        raise RuntimeError("Не указан category.")
-    total = len(content.slides)
-    if total < 1:
-        raise RuntimeError("Нет слайдов для сборки.")
-
-    slides_out = [
-        build_slide(
-            s,
-            index=i,
-            total=total,
-            lay=lay,
-            handle=handle,
-            category=category,
-            cover_src=content.cover,
-            palette=palette,
-            rng=rng,
-        )
-        for i, s in enumerate(content.slides)
-    ]
-
-    return {
-        "title": content.title,
-        "aspectRatio": aspect,
-        "width": w,
-        "height": h,
-        "slides": slides_out,
-    }
+__all__ = [
+    "CarouselTemplate",
+    "DefaultTemplate",
+    "L",
+    "build_carousel",
+    "callout_block",
+    "clip",
+    "content_start_y",
+    "counter",
+    "footer",
+    "get_template",
+    "grid",
+    "list_skill_template_ids",
+    "meta_handle",
+    "register",
+    "_L",
+    "_handle",
+    "_items_text",
+    "_stack_height",
+    "_text_block",
+    "_text_h",
+    "_with_grid_for",
+]

@@ -46,23 +46,59 @@ def _hex(value: Any, field: str) -> str:
     return text.upper()
 
 
+def _rel_luminance(hex_color: str) -> float:
+    raw = hex_color.lstrip("#")
+    r, g, b = (int(raw[i : i + 2], 16) / 255.0 for i in (0, 2, 4))
+
+    def lin(c: float) -> float:
+        return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+    r, g, b = lin(r), lin(g), lin(b)
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def _contrast_ratio(a: str, b: str) -> float:
+    l1, l2 = _rel_luminance(a), _rel_luminance(b)
+    hi, lo = (l1, l2) if l1 >= l2 else (l2, l1)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+def _ensure_readable(fg: str, bg: str, *, prefer_light: bool | None = None) -> str:
+    """If contrast is weak, flip toward black/white on bg."""
+    if _contrast_ratio(fg, bg) >= 3.0:
+        return fg
+    if prefer_light is None:
+        prefer_light = _rel_luminance(bg) < 0.45
+    return "#F5F5F5" if prefer_light else "#141414"
+
+
 def parse_palette(raw: dict[str, Any]) -> Palette:
     name = str(raw.get("name") or "").strip()
     if not name:
         raise RuntimeError("ИИ не вернул name палитры.")
+    bg = _hex(raw.get("bg"), "bg")
+    text = _ensure_readable(_hex(raw.get("text"), "text"), bg)
+    accent = _hex(raw.get("accent"), "accent")
+    accent_text = _ensure_readable(_hex(raw.get("accent_text"), "accent_text"), accent)
     return Palette(
         name=name[:48],
-        bg=_hex(raw.get("bg"), "bg"),
-        text=_hex(raw.get("text"), "text"),
+        bg=bg,
+        text=text,
         muted=_hex(raw.get("muted"), "muted"),
-        accent=_hex(raw.get("accent"), "accent"),
-        accent_text=_hex(raw.get("accent_text"), "accent_text"),
+        accent=accent,
+        accent_text=accent_text,
         grid=_hex(raw.get("grid"), "grid"),
         photo=_hex(raw.get("photo"), "photo"),
     )
 
 
-async def generate_palette(*, topic: str, language: str, model_id: str | None = None) -> Palette:
+async def generate_palette(
+    *,
+    topic: str,
+    language: str,
+    model_id: str | None = None,
+    mood: str = "",
+) -> Palette:
     if not topic.strip():
         raise RuntimeError("Не указан topic для палитры.")
     if not language.strip():
@@ -70,8 +106,8 @@ async def generate_palette(*, topic: str, language: str, model_id: str | None = 
 
     raw = await chat_json(
         system=prompts.PALETTE_SYSTEM,
-        user=prompts.palette_user(topic=topic, language=language),
-        temperature=0.7,
+        user=prompts.palette_user(topic=topic, language=language, mood=mood),
+        temperature=1.05,
         max_tokens=400,
         model_id=model_id,
     )

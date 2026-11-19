@@ -1,9 +1,10 @@
 # Deckva AI — CORA
 
-FastAPI-сервис: **CORA Fast** + кредитный хаб + каталог моделей.
+FastAPI-сервис: **CORA Fast** + каталог моделей + OpenRouter gateway.
 
 Все LLM-вызовы — только через **OpenRouter** (`OPENROUTER_API_KEY` на сервере).  
-Ollama / локальные веса / BYOK **не используются**.
+Ollama / локальные веса / BYOK **не используются**.  
+Кредиты / биллинг — на **Next.js сервере**, здесь только генерация.
 
 ## Запуск
 
@@ -19,34 +20,23 @@ uvicorn app.main:app --reload --port 8000
 |--------|------|
 | `app/llm.py` | Model Gateway → OpenRouter |
 | `app/catalog.py` | каталог моделей + ACL планов |
-| `app/credits.py` | quote → hold → spend / refund |
 | `app/cora/` | CORA Fast: plan → execute → assemble |
 | `app/content.py` | tool `llm.fill_and_layout` |
-| `app/palette.py` / `template.py` | палитра + Fabric assemble |
-
-Free-кошелёк: **150 promo-кредитов** (~3 Economy-генерации).
+| `app/palette.py` / `templates/` | палитра + Fabric templates (OOP registry по skillId) |
+| `app/cora/aesthetic/` | эксперимент: `skillId=aesthetic` → LLM сама invents Pinterest layout |
+| `app/stock_photos.py` | Unsplash search по `image_prompt` |
+| `app/templates/` | визуальные шаблоны по `skillId` (manifesto/niches/lookbook + legacy aesthetic fallback) |
 
 ## API
 
 ### `GET /health`
 Сервис + статус OpenRouter.
 
-### `GET /models?plan=free|starter|pro`
-Каталог моделей плана (Free = Economy).
+### `GET /models`
+Полный каталог моделей. Дневной лимит генераций — в Next.js.
 
-### `POST /credits/quote`
-```json
-{
-  "userId": "u1",
-  "modelId": "gemini-flash",
-  "slides": 7,
-  "mode": "fast",
-  "plan": "free"
-}
-```
-
-### `GET /credits/wallet/{userId}`
-Баланс buckets + ledger.
+### `GET /fonts`
+20 шрифтов (2026) + список `typeScales`. Шрифт и размеры на run выбирает ИИ.
 
 ### `POST /cora/run` — единственный путь генерации
 ```json
@@ -57,16 +47,19 @@ Free-кошелёк: **150 promo-кредитов** (~3 Economy-генераци
   "ratio": "4:5",
   "slidesCount": 7,
   "handle": "@coach",
+  "showHandle": true,
   "cover": "",
   "mode": "fast",
-  "plan": "free",
   "modelId": "gemini-flash",
   "save": false
 }
 ```
 
-Ответ: `coraRunId`, `CarouselPlan` с object ids, Fabric `carousel`, `credits`.  
-При ошибке upstream — **refund hold**.
+Ответ: `coraRunId`, `CarouselPlan` с object ids, Fabric `carousel` (+ `typography` в design).
+
+Типографика: ИИ выбирает шрифт из каталога `GET /fonts` (все с кириллицей+латиницей) и шкалу размеров (`typeScale`).  
+Макс. размер заголовка — **70**. Опциональный override: `"font": "Poppins"`.  
+Author handle: `"showHandle": false` — не рисовать хэндл на слайдах (`handle` тогда не обязателен).
 
 ### `GET /cora/runs/{coraRunId}` / `GET /cora/runs?userId=`
 Статус и история run.
@@ -81,3 +74,11 @@ Free-кошелёк: **150 promo-кредитов** (~3 Economy-генераци
 | `OPENROUTER_API_KEY` | платформенный ключ (**обязателен**) |
 | `DECKVA_DEFAULT_MODEL_ID` | дефолт каталога (`gemini-flash`) |
 | `OPENROUTER_BASE_URL` | override API base |
+| `UNSPLASH_ACCESS_KEY` | поиск обложек/фото в Unsplash (**нужен** для автофото) |
+| `DECKVA_STOCK_PHOTOS` | `1`/`0` — автоподбор Unsplash по `image_prompt` (по умолчанию вкл., если есть ключ) |
+
+### Сток-фото в карусели
+
+CORA просит у модели `image_prompt` (english search query). Если своих картинок в `cover` / `attachments` нет и задан `UNSPLASH_ACCESS_KEY`, сервис сам ищет фото в Unsplash и вставляет на cover + 1–2 mid-слайда.
+
+Отключить на запрос: `"stockPhotos": false` в `POST /cora/run`.
