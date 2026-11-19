@@ -136,13 +136,14 @@ _SKILL_SPECS: dict[str, dict[str, Any]] = {
     "aesthetic": {
         "slidesCount": 6,
         "hasCover": True,
+        "engine": "aesthetic_llm",
         "midRoles": ["offer", "howto", "proof", "lesson"],
         "midLayouts": ["statement", "list", "quote", "statement"],
         "preferredContentLayouts": ["statement", "orange_quote", "tips"],
         "brief": (
-            "Aesthetic lifestyle carousel (full-bleed cover). Soft lowercase hook on cover; "
-            "image_prompt = moody minimalist interior / fashion portrait, negative space for text. "
-            "Mid slides: one calm tip or idea each; end with soft CTA."
+            "Pinterest aesthetic carousel. Quiet-luxury / cozy editorial lifestyle. "
+            "LLM invents each slide composition (full-bleed + cream stacked type + frosted pills, "
+            "2x2 collage, split portrait/flat-lay seam, stacked tip photos). Soft CTA at the end."
         ),
     },
     "manifesto": {
@@ -232,6 +233,15 @@ def apply_skill_to_design(
         out["preferredContentLayouts"] = list(preferred)
     out["skillId"] = normalize_skill_id(skill_id)
     out["skillBrief"] = spec.get("brief") or ""
+    engine = spec.get("engine")
+    if engine:
+        out["engine"] = str(engine)
+        # Aesthetic branch: LLM owns mood/layout — stop random mood pools dominating.
+        if engine == "aesthetic_llm":
+            out["mood"] = "pinterest_editorial"
+            out["gridMode"] = "none"
+            out["photoRatio"] = 1.0
+            out["accentBias"] = 0.2
     return out
 
 
