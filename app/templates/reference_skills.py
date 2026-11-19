@@ -77,7 +77,12 @@ def _split_stack(text: str, *, max_lines: int = 6) -> list[str]:
 
 
 class AestheticTemplate(DefaultTemplate):
-    """Ref: moody full-bleed + lowercase copy bottom-left + ( → ) swipe hint."""
+    """Legacy fallback for skill=aesthetic.
+
+    Live path uses CORA aesthetic_llm engine (`app/cora/aesthetic/`) which lets the
+    model invent Pinterest layouts. This class remains registered only if something
+    calls the template registry directly without the aesthetic engine.
+    """
 
     skill_id: ClassVar[str | None] = "aesthetic"
     head_size: ClassVar[int] = 36

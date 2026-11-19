@@ -21,9 +21,9 @@ flowchart LR
 | Фаза | Что делает | LLM? |
 |------|------------|------|
 | **Intake** | Читает тему, фото, skill, handle | нет |
-| **Plan** | Решает структуру слайдов и mood | нет (рандом от runId) |
+| **Plan** | Решает структуру слайдов и mood | нет (рандом от runId); у `aesthetic` — engine=aesthetic_llm |
 | **Execute** | Пишет тексты, палитру, шрифт; ищет фото | да |
-| **Assemble** | Собирает Fabric-слайды по шаблону | нет |
+| **Assemble** | Собирает Fabric-слайды по шаблону | нет; у `aesthetic` — из LLM `elements[]` |
 
 Статусы run: `planning` → `executing` → `assembling` → `done` / `failed`.
 
@@ -210,6 +210,19 @@ flowchart TD
 
 Без skill — CORA сама кидает роли из пулов (hook / offer / proof / …).
 
+### Ветка `aesthetic` (эксперимент)
+
+При `skillId=aesthetic` CORA уходит в **отдельный engine** (`design.engine = aesthetic_llm`):
+
+1. Plan почти не диктует layout/mood-пулы (mood фиксируется как `pinterest_editorial`).
+2. Execute зовёт отдельный промпт: модель сама придумывает композицию каждого слайда
+   (`elements[]` в нормализованных координатах 0..1) — full-bleed + cream type + pills,
+   2×2 collage, split seam, stack tips и т.п. (Pinterest aesthetic).
+3. Assemble **не** берёт `AestheticTemplate` из registry — рендерит Fabric из `elements[]`.
+4. Фото: несколько `image_prompts` на слайд → Unsplash по слотам collage/split.
+
+Остальные skills по-прежнему: рандом design → тексты LLM → жёсткий OOP-шаблон.
+
 ---
 
 ## Что где в коде
@@ -220,6 +233,7 @@ flowchart TD
 | Design + skeleton plan | `app/cora/plan.py` |
 | Skills | `app/cora/skills.py` |
 | Тексты LLM | `app/content.py` + `app/prompts.py` |
+| Aesthetic / Pinterest LLM | `app/cora/aesthetic/` |
 | Палитра | `app/palette.py` |
 | Шрифты | `app/fonts.py` |
 | Сборка Fabric | `app/cora/assemble.py` + `app/templates/` |
