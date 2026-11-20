@@ -98,6 +98,57 @@ def text_h(text: str, font_size: int, width: float) -> float:
     return lines * font_size * max(LINE_HEIGHT, 0.95) + 4
 
 
+def split_stack(text: str, *, max_lines: int = 6) -> list[str]:
+    """Split words into ≤ max_lines for stacked cover titles."""
+    words = [w for w in (text or "").split() if w]
+    if not words:
+        return [""]
+    if len(words) <= max_lines:
+        return words
+    n = max_lines
+    out: list[str] = []
+    i = 0
+    for line_i in range(n):
+        left = n - line_i
+        take = max(1, round((len(words) - i) / left))
+        chunk = words[i : i + take]
+        if not chunk:
+            break
+        out.append(" ".join(chunk))
+        i += take
+    if i < len(words):
+        out[-1] = (out[-1] + " " + " ".join(words[i:])).strip()
+    return out
+
+
+def full_bleed_photo(
+    lay: L,
+    cover_src: str,
+    palette: Palette,
+    *,
+    dim: float = 0.22,
+) -> list[dict[str, Any]]:
+    """Full-canvas photo (or palette placeholder) with optional darken overlay."""
+    if (cover_src or "").strip():
+        objs: list[dict[str, Any]] = [
+            image(cover_src.strip(), left=0, top=0, width=lay.w, height=lay.h, swibp_slot="image")
+        ]
+        if dim > 0:
+            objs.append(
+                rect(
+                    left=0,
+                    top=0,
+                    width=lay.w,
+                    height=lay.h,
+                    fill="#000000",
+                    opacity=dim,
+                    swibp_slot="accent",
+                )
+            )
+        return objs
+    return [rect(left=0, top=0, width=lay.w, height=lay.h, fill=palette.photo, swibp_slot="image")]
+
+
 def grid(
     w: int,
     h: int,
@@ -639,6 +690,7 @@ __all__ = [
     "counter",
     "current_font",
     "footer",
+    "full_bleed_photo",
     "grid",
     "handle_text",
     "image",
@@ -648,6 +700,7 @@ __all__ = [
     "rect",
     "scaled_size",
     "slide",
+    "split_stack",
     "stack_height",
     "text_block",
     "text_h",

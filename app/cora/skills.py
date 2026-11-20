@@ -136,14 +136,19 @@ _SKILL_SPECS: dict[str, dict[str, Any]] = {
     "aesthetic": {
         "slidesCount": 6,
         "hasCover": True,
-        "engine": "aesthetic_llm",
         "midRoles": ["offer", "howto", "proof", "lesson"],
-        "midLayouts": ["statement", "list", "quote", "statement"],
-        "preferredContentLayouts": ["statement", "orange_quote", "tips"],
+        "midLayouts": ["statement", "tips", "quote", "statement"],
+        "preferredContentLayouts": ["statement", "tips", "orange_quote"],
         "brief": (
-            "Pinterest aesthetic carousel. Quiet-luxury / cozy editorial lifestyle. "
-            "LLM invents each slide composition (full-bleed + cream stacked type + frosted pills, "
-            "2x2 collage, split portrait/flat-lay seam, stacked tip photos). Soft CTA at the end."
+            "Pinterest aesthetic carousel (quiet-luxury / cozy editorial). "
+            "Layouts are FIXED — only two even variants: portrait (full-bleed + corner meta) "
+            "and collage (2×2 grid + centered black title bar). Only write copy + image_prompt. "
+            "Cover heading: short poetic line (3–8 words); callout = soft /сохраняй/-style cue; "
+            "tag = blog footer or bio line; badges = optional 1–2 short meta labels. "
+            "Mid portrait: heading + body = two short shot labels (e.g. «портрет с лицом» / "
+            "«средний план»). Mid collage: heading = one soft ritual phrase for the center bar; "
+            "tag = blog footer. image_prompt every photo slide (english Unsplash 4–8 words, "
+            "lifestyle / flat-lay / flowers / coffee). CTA: soft invitation, not salesy."
         ),
     },
     "manifesto": {
@@ -233,15 +238,12 @@ def apply_skill_to_design(
         out["preferredContentLayouts"] = list(preferred)
     out["skillId"] = normalize_skill_id(skill_id)
     out["skillBrief"] = spec.get("brief") or ""
-    engine = spec.get("engine")
-    if engine:
-        out["engine"] = str(engine)
-        # Aesthetic branch: LLM owns mood/layout — stop random mood pools dominating.
-        if engine == "aesthetic_llm":
-            out["mood"] = "pinterest_editorial"
-            out["gridMode"] = "none"
-            out["photoRatio"] = 1.0
-            out["accentBias"] = 0.2
+    if out.get("skillId") == "aesthetic":
+        out["mood"] = "pinterest_editorial"
+        out["gridMode"] = "none"
+        out["photoRatio"] = 1.0
+        out["accentBias"] = 0.2
+        out.pop("engine", None)
     return out
 
 

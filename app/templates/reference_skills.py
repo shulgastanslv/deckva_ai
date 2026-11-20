@@ -4,158 +4,22 @@ from __future__ import annotations
 
 from typing import Any, ClassVar
 
+from app.fonts import current_font, scaled_size
 from app.palette import Palette
 from app.schemas import SlideContent
-from app.fonts import current_font, scaled_size
+from app.templates.aesthetic import AestheticTemplate
 from app.templates.base import (
-    GAP,
     SIZE_META,
     L,
     clip,
     counter,
     footer,
-    image,
-    meta_handle,
-    rect,
+    full_bleed_photo,
     slide,
-    text_block,
-    text_h,
+    split_stack,
     textbox,
 )
 from app.templates.default import DefaultTemplate
-
-
-def _full_bleed_photo(
-    lay: L,
-    cover_src: str,
-    palette: Palette,
-    *,
-    dim: float = 0.28,
-) -> list[dict[str, Any]]:
-    """Edge-to-edge photo (+ optional dark scrim for type)."""
-    if cover_src.strip():
-        objs: list[dict[str, Any]] = [
-            image(cover_src.strip(), left=0, top=0, width=lay.w, height=lay.h, swibp_slot="image")
-        ]
-        if dim > 0:
-            objs.append(
-                rect(
-                    left=0,
-                    top=0,
-                    width=lay.w,
-                    height=lay.h,
-                    fill="#000000",
-                    opacity=dim,
-                    swibp_slot="accent",
-                )
-            )
-        return objs
-    return [rect(left=0, top=0, width=lay.w, height=lay.h, fill=palette.photo, swibp_slot="image")]
-
-
-def _split_stack(text: str, *, max_lines: int = 6) -> list[str]:
-    words = [w for w in (text or "").split() if w]
-    if not words:
-        return [""]
-    if len(words) <= max_lines:
-        return words
-    # pack into max_lines roughly evenly
-    n = max_lines
-    out: list[str] = []
-    i = 0
-    for line_i in range(n):
-        left = n - line_i
-        take = max(1, round((len(words) - i) / left))
-        chunk = words[i : i + take]
-        if not chunk:
-            break
-        out.append(" ".join(chunk))
-        i += take
-    if i < len(words):
-        out[-1] = (out[-1] + " " + " ".join(words[i:])).strip()
-    return out
-
-
-class AestheticTemplate(DefaultTemplate):
-    """Legacy fallback for skill=aesthetic.
-
-    Live path uses CORA aesthetic_llm engine (`app/cora/aesthetic/`) which lets the
-    model invent Pinterest layouts. This class remains registered only if something
-    calls the template registry directly without the aesthetic engine.
-    """
-
-    skill_id: ClassVar[str | None] = "aesthetic"
-    head_size: ClassVar[int] = 36
-
-    def design_defaults(self) -> dict[str, Any]:
-        return {
-            **super().design_defaults(),
-            "photoRatio": 1.0,
-            "gridMode": "none",
-            "accentBias": 0.2,
-            "hasCover": True,
-        }
-
-    def layout_cover(
-        self,
-        s: SlideContent,
-        lay: L,
-        handle: str,
-        category: str,
-        palette: Palette,
-        *,
-        index: int,
-        with_grid: bool,
-        cover_src: str,
-        photo_ratio: float = 1.0,
-    ) -> dict[str, Any]:
-        objs = _full_bleed_photo(lay, cover_src, palette, dim=0.22)
-        fill = "#FFFFFF"
-        objs.append(meta_handle(handle, lay, fill=fill, font_weight="500"))
-        objs.append(
-            textbox(
-                "( → )",
-                left=lay.pad,
-                top=lay.h * 0.58,
-                width=120,
-                font_size=scaled_size(SIZE_META, kind="meta"),
-                font_family=current_font(),
-                fill=fill,
-                font_weight="400",
-                opacity=0.85,
-                swibp_style="body",
-            )
-        )
-        heading = clip(s.heading, 160).lower()
-        body = clip(s.body, 100).lower() if s.body else ""
-        head_h = text_h(heading, self.head_px, lay.w * 0.62)
-        body_h = text_h(body, 22, lay.w * 0.55) if body else 0
-        y = lay.h - lay.pad * 2.2 - head_h - (GAP + body_h if body else 0)
-        head, bottom = text_block(
-            heading,
-            top=y,
-            lay=lay,
-            font_size=self.head_px,
-            font_weight="500",
-            fill=fill,
-            swibp_style="heading",
-            width=lay.w * 0.62,
-        )
-        objs.append(head)
-        if body:
-            b, _ = text_block(
-                body,
-                top=bottom + 10,
-                lay=lay,
-                font_size=22,
-                font_weight="700",
-                fill=fill,
-                swibp_style="body",
-                width=lay.w * 0.55,
-            )
-            objs.append(b)
-        objs.extend(footer(lay, category, fill_cat=fill, fill_arrow=fill))
-        return slide(palette.bg, objs, width=lay.w, height=lay.h)
 
 
 class ManifestoTemplate(DefaultTemplate):
@@ -186,7 +50,7 @@ class ManifestoTemplate(DefaultTemplate):
         cover_src: str,
         photo_ratio: float = 1.0,
     ) -> dict[str, Any]:
-        objs = _full_bleed_photo(lay, cover_src, palette, dim=0.18)
+        objs = full_bleed_photo(lay, cover_src, palette, dim=0.18)
         fill = "#FFFFFF"
         objs.append(
             textbox(
@@ -204,7 +68,7 @@ class ManifestoTemplate(DefaultTemplate):
         )
         objs.append(counter(index, lay, fill=fill))
 
-        lines = _split_stack(clip(s.heading, 80).upper(), max_lines=5)
+        lines = split_stack(clip(s.heading, 80).upper(), max_lines=5)
         line_size = self.head_px
         line_gap = 6
         block_h = len(lines) * (line_size * 0.95 + line_gap)
@@ -274,7 +138,7 @@ class NichesTemplate(DefaultTemplate):
         cover_src: str,
         photo_ratio: float = 1.0,
     ) -> dict[str, Any]:
-        objs = _full_bleed_photo(lay, cover_src, palette, dim=0.12)
+        objs = full_bleed_photo(lay, cover_src, palette, dim=0.12)
         cream = "#F2E6A8"
         white = "#FFFFFF"
 
@@ -398,7 +262,7 @@ class LookbookTemplate(DefaultTemplate):
         cover_src: str,
         photo_ratio: float = 1.0,
     ) -> dict[str, Any]:
-        objs = _full_bleed_photo(lay, cover_src, palette, dim=0.2)
+        objs = full_bleed_photo(lay, cover_src, palette, dim=0.2)
         cream = "#EDE4D0"
         fill = "#FFFFFF"
 
@@ -474,4 +338,12 @@ REFERENCE_SKILL_TEMPLATE_CLASSES: list[type[DefaultTemplate]] = [
     ManifestoTemplate,
     NichesTemplate,
     LookbookTemplate,
+]
+
+__all__ = [
+    "AestheticTemplate",
+    "ManifestoTemplate",
+    "NichesTemplate",
+    "LookbookTemplate",
+    "REFERENCE_SKILL_TEMPLATE_CLASSES",
 ]
