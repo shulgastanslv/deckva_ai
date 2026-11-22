@@ -51,6 +51,8 @@ class LaunchTemplate(DefaultTemplate):
         with_grid: bool,
         cover_src: str,
         photo_ratio: float = 0.52,
+        cover_placement: str = "top",
+        cover_rounded: bool = False,
     ) -> dict[str, Any]:
         out = super().layout_cover(
             s,
@@ -62,6 +64,8 @@ class LaunchTemplate(DefaultTemplate):
             with_grid=with_grid,
             cover_src=cover_src,
             photo_ratio=photo_ratio,
+            cover_placement=cover_placement,
+            cover_rounded=cover_rounded,
         )
         # Accent rule under first heading textbox
         heads = [o for o in out["objects"] if o.get("swibpStyle") == "heading"]

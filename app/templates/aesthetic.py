@@ -1,7 +1,12 @@
-"""Aesthetic skill templates — two even Pinterest layouts from references.
+"""Aesthetic skill — one skill, randomized cover families from references.
 
-1. portrait — full-bleed photo, axis-aligned corner meta + caption
-2. collage  — equal 2×2 grid, centered black title bar, footer corners
+Cover pool (server RNG):
+1. portrait  — full-bleed, centered title + /cue/
+2. editorial — full-bleed, left cream hook with [brackets], footer corners
+3. diptych   — vertical 50/50 photos, centered title + /сохраняй/
+4. collage   — equal 2×2 + centered black title bar
+5. manifesto — full-bleed, huge stacked centered slogan
+6. niches    — full-bleed + floating niche tags + bracket title
 
 LLM only fills SlideContent. Geometry lives here.
 """
@@ -24,6 +29,7 @@ from app.templates.base import (
     image,
     rect,
     slide,
+    split_stack,
     text_h,
     textbox,
 )
@@ -34,14 +40,17 @@ CREAM_SOFT = "#EDE4D0"
 WHITE = "#FFFFFF"
 BLACK = "#111111"
 
-# Exactly two even families (+ soft CTA).
-COVER_VARIANTS = ("portrait", "collage")
-MID_VARIANTS = ("portrait", "collage")
+COVER_VARIANTS = ("portrait", "editorial", "diptych", "collage", "manifesto", "niches")
+MID_VARIANTS = ("portrait", "diptych", "collage", "editorial")
 CTA_VARIANT = "cta_soft"
 
 PHOTO_SLOTS: dict[str, int] = {
     "portrait": 1,
+    "editorial": 1,
+    "diptych": 2,
     "collage": 4,
+    "manifesto": 1,
+    "niches": 1,
     "cta_soft": 1,
 }
 
@@ -130,6 +139,25 @@ def _meta_lines(primary: str, secondary: str) -> list[str]:
     return lines[:2] or [""]
 
 
+def _bracket_highlight(text: str) -> str:
+    """Wrap the last word in [brackets] like the editorial references."""
+    raw = clip(text, 90).strip()
+    if not raw:
+        return raw
+    if "[" in raw and "]" in raw:
+        return raw.lower()
+    parts = raw.split()
+    if len(parts) < 2:
+        return raw.lower()
+    parts[-1] = f"[{parts[-1].strip('[],')}]"
+    return " ".join(parts).lower()
+
+
+def _save_cue(s: SlideContent, fallback: str = "сохраняй") -> str:
+    call = clip(s.callout or s.body or fallback, 36).lower().strip().strip("/")
+    return f"/{call or fallback}/"
+
+
 def pick_cover_variant(key: str | int | None = None) -> str:
     """Stable cover pick from run id / seed (no shared RNG drift)."""
     if key is None or key == "":
@@ -139,6 +167,10 @@ def pick_cover_variant(key: str | int | None = None) -> str:
     name = str(key).strip()
     if name in COVER_VARIANTS:
         return name
+    # Legacy aliases from old separate skills
+    legacy = {"lookbook": "diptych", "lifestyle": "editorial"}
+    if name in legacy:
+        return legacy[name]
     return COVER_VARIANTS[sum(ord(c) for c in str(key)) % len(COVER_VARIANTS)]
 
 
@@ -159,7 +191,10 @@ def aesthetic_variant_for(
         return COVER_VARIANTS[0]
     if index == total - 1:
         return CTA_VARIANT
-    return MID_VARIANTS[(index - 1) % len(MID_VARIANTS)]
+    mid = list(MID_VARIANTS)
+    if rng is not None:
+        return mid[rng.randrange(len(mid))]
+    return mid[(index - 1) % len(mid)]
 
 
 def photo_slot_count(variant: str) -> int:
@@ -346,7 +381,7 @@ def _center_title_bar(
 
 
 class AestheticTemplate(DefaultTemplate):
-    """Pinterest aesthetic: two even layout variants, normal content pipeline."""
+    """One aesthetic skill — cover family randomized per run."""
 
     skill_id: ClassVar[str | None] = "aesthetic"
     head_size: ClassVar[int] = 42
@@ -390,7 +425,11 @@ class AestheticTemplate(DefaultTemplate):
 
         builders = {
             "portrait": self._lay_portrait,
+            "editorial": self._lay_editorial,
+            "diptych": self._lay_diptych,
             "collage": self._lay_collage,
+            "manifesto": self._lay_manifesto,
+            "niches": self._lay_niches,
             "cta_soft": self._lay_cta_soft,
         }
         builder = builders.get(variant, self._lay_portrait)
@@ -516,7 +555,301 @@ class AestheticTemplate(DefaultTemplate):
 
         return slide(BLACK, objs, width=lay.w, height=lay.h)
 
-    # —— Variant 2: collage ——
+    # —— Variant: editorial (ref — left cream hook + footer) ——
+
+    def _lay_editorial(
+        self,
+        s: SlideContent,
+        lay: L,
+        handle: str,
+        category: str,
+        palette: Palette,
+        *,
+        index: int,
+        total: int,
+        photos: list[str],
+        variant: str,
+    ) -> dict[str, Any]:
+        """Full-bleed + left cream headline with [brackets] + footer corners."""
+        objs = _photo_or_placeholder(lay, photos[0] if photos else "", palette, dim=0.16, slot=0)
+        pad = lay.pad
+        is_cover = index == 0
+
+        if is_cover:
+            heading = _bracket_highlight(s.heading or category)
+            body = clip(s.body or s.callout or "", 48).lower()
+            head_size = max(self.head_px + 4, 44)
+            title_w = lay.w * 0.72
+            th = text_h(heading, head_size, title_w)
+            title_top = lay.h * 0.38
+            objs.append(
+                textbox(
+                    heading,
+                    left=pad,
+                    top=title_top,
+                    width=title_w,
+                    font_size=head_size,
+                    font_family=current_font(),
+                    fill=CREAM,
+                    font_weight="700",
+                    text_align="left",
+                    line_height=1.02,
+                    swibp_style="heading",
+                )
+            )
+            if body:
+                objs.append(
+                    textbox(
+                        body,
+                        left=pad,
+                        top=title_top + th + 14,
+                        width=title_w * 0.85,
+                        font_size=scaled_size(SIZE_META, kind="meta") + 4,
+                        font_family=current_font(),
+                        fill=CREAM,
+                        font_weight="500",
+                        text_align="left",
+                        swibp_style="body",
+                    )
+                )
+        else:
+            objs.extend(_corner_top(lay, left_lines=_meta_lines(category, ""), handle=handle, fill=WHITE))
+            caption = _meta_lines(clip(s.heading, 60), clip(s.body or "", 60))
+            objs.extend(
+                _caption_block(
+                    lay,
+                    caption,
+                    fill=WHITE,
+                    font_size=max(22, self.head_px - 14),
+                )
+            )
+
+        objs.extend(
+            _corner_footer(
+                lay,
+                tag=s.tag or "блог про интеллектуальный блогинг & посты-карусели",
+                handle=handle,
+                fill=WHITE,
+            )
+        )
+        return slide(BLACK, objs, width=lay.w, height=lay.h)
+
+    # —— Variant: diptych (ref — vertical split lookbook) ——
+
+    def _lay_diptych(
+        self,
+        s: SlideContent,
+        lay: L,
+        handle: str,
+        category: str,
+        palette: Palette,
+        *,
+        index: int,
+        total: int,
+        photos: list[str],
+        variant: str,
+    ) -> dict[str, Any]:
+        """Top/bottom half photos + centered title + /save/ cue."""
+        half = lay.h / 2
+        top_src = photos[0] if photos else ""
+        bot_src = photos[1] if len(photos) > 1 else (photos[0] if photos else "")
+        objs: list[dict[str, Any]] = []
+        objs.extend(
+            _photo_cell(top_src, left=0, top=0, width=float(lay.w), height=half, palette=palette, dim=0.12, slot=0)
+        )
+        objs.extend(
+            _photo_cell(
+                bot_src, left=0, top=half, width=float(lay.w), height=half, palette=palette, dim=0.12, slot=1
+            )
+        )
+
+        tagline = _meta_lines(
+            s.tag or category or "эстетика в маленьком городе",
+            (s.badges[0] if s.badges else "") or "превращаю обычное в особенное",
+        )
+        objs.extend(_corner_top(lay, left_lines=tagline, handle=handle, fill=WHITE))
+
+        heading = clip(s.heading, 90).lower()
+        head_size = max(self.head_px, 40)
+        title_w = lay.w - lay.pad * 2
+        th = text_h(heading, head_size, title_w)
+        title_top = (lay.h - th) / 2 - head_size * 0.2
+        objs.append(
+            textbox(
+                heading,
+                left=lay.pad,
+                top=title_top,
+                width=title_w,
+                font_size=head_size,
+                font_family=current_font(),
+                fill=WHITE,
+                font_weight="700",
+                text_align="center",
+                line_height=1.02,
+                swibp_style="heading",
+            )
+        )
+        objs.append(
+            textbox(
+                _save_cue(s),
+                left=lay.pad,
+                top=title_top + th + 14,
+                width=title_w,
+                font_size=scaled_size(SIZE_META, kind="meta") + 2,
+                font_family=current_font(),
+                fill=WHITE,
+                font_weight="400",
+                text_align="center",
+                swibp_style="body",
+            )
+        )
+        return slide(BLACK, objs, width=lay.w, height=lay.h)
+
+    # —— Variant: manifesto ——
+
+    def _lay_manifesto(
+        self,
+        s: SlideContent,
+        lay: L,
+        handle: str,
+        category: str,
+        palette: Palette,
+        *,
+        index: int,
+        total: int,
+        photos: list[str],
+        variant: str,
+    ) -> dict[str, Any]:
+        """Full-bleed + huge stacked centered statement."""
+        objs = _photo_or_placeholder(lay, photos[0] if photos else "", palette, dim=0.2, slot=0)
+        objs.extend(_corner_top(lay, left_lines=[], handle=handle, fill=WHITE))
+
+        lines = split_stack(clip(s.heading, 80).upper(), max_lines=5)
+        line_size = max(self.head_px + 16, 56)
+        line_gap = 6
+        block_h = len(lines) * (line_size * 0.95 + line_gap)
+        y = (lay.h - block_h) / 2
+        for line in lines:
+            objs.append(
+                textbox(
+                    line,
+                    left=lay.pad,
+                    top=y,
+                    width=lay.w - lay.pad * 2,
+                    font_size=line_size,
+                    font_family=current_font(),
+                    fill=WHITE,
+                    font_weight="700",
+                    text_align="center",
+                    line_height=0.92,
+                    swibp_style="heading",
+                )
+            )
+            y += line_size * 0.95 + line_gap
+
+        note = clip(s.body or s.callout, 90)
+        if note:
+            objs.append(
+                textbox(
+                    f"* {note}",
+                    left=lay.w * 0.35,
+                    top=lay.h - lay.pad * 2.6,
+                    width=lay.w * 0.55,
+                    font_size=18,
+                    font_family=current_font(),
+                    fill=CREAM_SOFT,
+                    font_weight="500",
+                    swibp_style="body",
+                )
+            )
+        objs.extend(footer(lay, category, fill_cat=WHITE, fill_arrow=CREAM))
+        return slide(BLACK, objs, width=lay.w, height=lay.h)
+
+    # —— Variant: niches ——
+
+    def _lay_niches(
+        self,
+        s: SlideContent,
+        lay: L,
+        handle: str,
+        category: str,
+        palette: Palette,
+        *,
+        index: int,
+        total: int,
+        photos: list[str],
+        variant: str,
+    ) -> dict[str, Any]:
+        """Full-bleed + bracket title + floating niche tags from items."""
+        objs = _photo_or_placeholder(lay, photos[0] if photos else "", palette, dim=0.12, slot=0)
+        title = clip(s.heading, 48)
+        objs.append(
+            textbox(
+                f"[ {title.lower()} ]",
+                left=lay.pad,
+                top=lay.pad * 1.1,
+                width=lay.w - lay.pad * 2,
+                font_size=28,
+                font_family=current_font(),
+                fill=CREAM,
+                font_weight="700",
+                text_align="center",
+                swibp_style="heading",
+            )
+        )
+        if s.body:
+            objs.append(
+                textbox(
+                    clip(s.body, 40).lower(),
+                    left=lay.pad,
+                    top=lay.pad * 1.1 + 40,
+                    width=lay.w * 0.4,
+                    font_size=22,
+                    font_family=current_font(),
+                    fill=CREAM,
+                    font_weight="600",
+                    swibp_style="body",
+                )
+            )
+
+        tags = [clip(t, 22).lower() for t in (s.items or [])[:8] if str(t).strip()]
+        if not tags and s.badges:
+            tags = [clip(t, 22).lower() for t in s.badges[:6] if str(t).strip()]
+        left_x = lay.pad * 0.85
+        right_x = lay.w * 0.58
+        y_left = lay.h * 0.28
+        y_right = lay.h * 0.32
+        for i, tag in enumerate(tags):
+            on_left = i % 2 == 0
+            objs.append(
+                textbox(
+                    tag,
+                    left=left_x if on_left else right_x,
+                    top=y_left if on_left else y_right,
+                    width=lay.w * 0.36,
+                    font_size=26,
+                    font_family=current_font(),
+                    fill=CREAM,
+                    font_weight="700",
+                    swibp_style="body",
+                )
+            )
+            if on_left:
+                y_left += 52
+            else:
+                y_right += 56
+
+        objs.extend(
+            _corner_footer(
+                lay,
+                tag=clip(s.callout or s.tag or category, 48),
+                handle=handle,
+                fill=WHITE,
+            )
+        )
+        return slide(BLACK, objs, width=lay.w, height=lay.h)
+
+    # —— Variant: collage ——
 
     def _lay_collage(
         self,
@@ -628,7 +961,21 @@ class AestheticTemplate(DefaultTemplate):
         return slide(bg, objs, width=lay.w, height=lay.h)
 
     # Unused abstract paths kept for DefaultTemplate compatibility
-    def layout_cover(self, s, lay, handle, category, palette, *, index, with_grid, cover_src, photo_ratio=1.0):
+    def layout_cover(
+        self,
+        s,
+        lay,
+        handle,
+        category,
+        palette,
+        *,
+        index,
+        with_grid,
+        cover_src,
+        photo_ratio=1.0,
+        cover_placement="top",
+        cover_rounded=False,
+    ):
         return self._lay_portrait(
             s, lay, handle, category, palette, index=index, total=index + 1, photos=[cover_src], variant="portrait"
         )

@@ -171,6 +171,57 @@ def rect(
     return obj
 
 
+def group(
+    objects: list[dict[str, Any]],
+    *,
+    left: float,
+    top: float,
+    width: float,
+    height: float,
+    opacity: float = 1.0,
+    swibp_role: str | None = None,
+    swibp_name: str | None = None,
+    swibp_slot: str | None = None,
+) -> dict[str, Any]:
+    """Fabric Group. Children use coords relative to the group center."""
+    gw = float(width)
+    gh = float(height)
+    cx = gw / 2.0
+    cy = gh / 2.0
+    children: list[dict[str, Any]] = []
+    for raw in objects:
+        child = dict(raw)
+        child["left"] = round(float(child.get("left", 0)) - cx, 2)
+        child["top"] = round(float(child.get("top", 0)) - cy, 2)
+        children.append(child)
+
+    obj = _base(
+        left=left,
+        top=top,
+        width=gw,
+        height=gh,
+        fill="",
+        opacity=opacity,
+    )
+    obj.update(
+        {
+            "type": "Group",
+            "subTargetCheck": False,
+            "interactive": False,
+            # Omit layoutManager — Fabric builds a default; serialized
+            # "layoutManager" breaks after client lowercases object types.
+            "objects": children,
+        }
+    )
+    if swibp_role:
+        obj["swibpRole"] = swibp_role
+    if swibp_name:
+        obj["swibpName"] = swibp_name
+    if swibp_slot:
+        obj["swibpSlot"] = swibp_slot
+    return obj
+
+
 def image(
     src: str,
     *,
@@ -180,6 +231,8 @@ def image(
     height: float,
     swibp_slot: str = "image",
     opacity: float = 1.0,
+    rx: float = 0,
+    ry: float = 0,
 ) -> dict[str, Any]:
     """Fabric Image. Для data: URL crossOrigin не ставим (иначе CORS/canvas ломается)."""
     obj = _base(
@@ -202,6 +255,38 @@ def image(
     # remote URL — anonymous; data URL — без crossOrigin
     if not src.startswith("data:"):
         obj["crossOrigin"] = "anonymous"
+    radius_x = max(0.0, float(rx))
+    radius_y = max(0.0, float(ry) if ry else radius_x)
+    if radius_x > 0 or radius_y > 0:
+        obj["clipPath"] = {
+            "type": "Rect",
+            "version": FABRIC_VERSION,
+            "originX": "center",
+            "originY": "center",
+            "left": 0,
+            "top": 0,
+            "width": round(width, 2),
+            "height": round(height, 2),
+            "fill": "#000000",
+            "stroke": None,
+            "strokeWidth": 0,
+            "rx": round(radius_x, 2),
+            "ry": round(radius_y, 2),
+            "scaleX": 1,
+            "scaleY": 1,
+            "angle": 0,
+            "flipX": False,
+            "flipY": False,
+            "opacity": 1,
+            "visible": True,
+            "backgroundColor": "",
+            "fillRule": "nonzero",
+            "paintFirst": "fill",
+            "globalCompositeOperation": "source-over",
+            "skewX": 0,
+            "skewY": 0,
+            "shadow": None,
+        }
     return obj
 
 

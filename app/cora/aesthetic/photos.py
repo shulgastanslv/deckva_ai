@@ -28,7 +28,7 @@ def _prompts_for_slide(
     primary = (slide.image_prompt or "").strip() or f"editorial lifestyle aesthetic {topic}"
     out = [primary]
     extras: list[str] = []
-    if variant == "collage":
+    if variant in {"collage", "diptych"}:
         for it in slide.items or []:
             text = str(it).strip()
             if not text:
