@@ -1,16 +1,22 @@
 #!/usr/bin/env bash
-# Deckva AI — быстрый деплой на Ubuntu (venv + systemd)
-# Usage:
-#   ./deploy/ubuntu.sh setup          # venv + зависимости + .env
-#   sudo ./deploy/ubuntu.sh install   # systemd unit + автозапуск
-#   sudo ./deploy/ubuntu.sh uninstall
-#   ./deploy/ubuntu.sh status|logs|restart
+# Deckva AI — деплой на Ubuntu (venv + systemd), порт 9000
+#
+# Полный пайплайн (на VPS из каталога deckva_ai):
+#   chmod +x deploy/ubuntu.sh
+#   ./deploy/ubuntu.sh setup
+#   nano .env   # OPENROUTER_API_KEY=sk-or-...
+#   sudo DECKVA_AI_HOST=0.0.0.0 ./deploy/ubuntu.sh install
+#   sudo ufw allow 9000/tcp   # если ufw включён
+#   ./deploy/ubuntu.sh status
+#
+# Если уже установлен на 127.0.0.1 — открыть наружу:
+#   sudo ./deploy/ubuntu.sh public
 
 set -euo pipefail
 
 SERVICE_NAME="deckva-ai"
 PORT="${DECKVA_AI_PORT:-9000}"
-HOST="${DECKVA_AI_HOST:-127.0.0.1}"
+HOST="${DECKVA_AI_HOST:-0.0.0.0}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -36,6 +42,11 @@ detect_user() {
   else
     stat -c '%U' "$APP_DIR"
   fi
+}
+
+# curl всегда на loopback — даже если listen 0.0.0.0
+health_url() {
+  echo "http://127.0.0.1:${PORT}/health"
 }
 
 cmd_setup() {
@@ -72,11 +83,12 @@ EOF
   fi
 
   chmod 600 "$ENV_FILE" 2>/dev/null || true
-  ok "setup готов. Дальше: sudo $0 install"
+  ok "setup готов. Дальше: nano .env && sudo DECKVA_AI_HOST=0.0.0.0 $0 install"
 }
 
 write_unit() {
   local user="$1"
+  local host="$2"
   cat >"$UNIT_PATH" <<EOF
 [Unit]
 Description=Deckva AI (CORA / OpenRouter)
@@ -88,7 +100,7 @@ User=${user}
 Group=${user}
 WorkingDirectory=${APP_DIR}
 EnvironmentFile=${ENV_FILE}
-ExecStart=${VENV_DIR}/bin/uvicorn app.main:app --host ${HOST} --port ${PORT} --workers 1
+ExecStart=${VENV_DIR}/bin/uvicorn app.main:app --host ${host} --port ${PORT} --workers 1
 Restart=on-failure
 RestartSec=5
 KillSignal=SIGTERM
@@ -112,17 +124,45 @@ cmd_install() {
   user="$(detect_user)"
   info "User: $user | host=$HOST port=$PORT"
 
-  write_unit "$user"
+  write_unit "$user" "$HOST"
   systemctl daemon-reload
   systemctl enable --now "$SERVICE_NAME"
+  systemctl restart "$SERVICE_NAME"
   sleep 1
   systemctl --no-pager --full status "$SERVICE_NAME" || true
 
-  if curl -fsS "http://${HOST}:${PORT}/health" >/dev/null 2>&1; then
-    ok "Сервис жив: http://${HOST}:${PORT}/health"
+  echo
+  ss -tlnp | grep ":${PORT}" || echo "⚠️  порт ${PORT} не слушается"
+  if curl -fsS "$(health_url)" >/dev/null 2>&1; then
+    ok "Сервис жив: $(health_url)"
+    ok "Снаружи: http://<IP_VPS>:${PORT}/health"
   else
     echo "⚠️  health пока не отвечает — смотри: journalctl -u ${SERVICE_NAME} -n 50"
   fi
+}
+
+# Уже стоит на 127.0.0.1 → открыть 0.0.0.0:9000
+cmd_public() {
+  run_as_root public
+  [[ -f "$UNIT_PATH" ]] || die "Unit не найден. Сначала: sudo $0 install"
+
+  info "Ставлю --host 0.0.0.0 в $UNIT_PATH"
+  sed -i 's/--host 127\.0\.0\.1/--host 0.0.0.0/' "$UNIT_PATH"
+  # на случай если уже 0.0.0.0 — ок; если другой host — принудительно
+  if ! grep -qE '--host 0\.0\.0\.0' "$UNIT_PATH"; then
+    sed -i -E "s|--host [^ ]+|--host 0.0.0.0|" "$UNIT_PATH"
+  fi
+
+  systemctl daemon-reload
+  systemctl restart "$SERVICE_NAME"
+  sleep 1
+
+  systemctl --no-pager --full status "$SERVICE_NAME" || true
+  echo
+  ss -tlnp | grep ":${PORT}" || true
+  curl -fsS "$(health_url)" && echo || echo "health: недоступен"
+  ok "Слушает 0.0.0.0:${PORT} — с ПК: http://<IP>:${PORT}/health"
+  echo "   Firewall: sudo ufw allow ${PORT}/tcp"
 }
 
 cmd_uninstall() {
@@ -135,7 +175,9 @@ cmd_uninstall() {
 
 cmd_status() {
   systemctl --no-pager --full status "$SERVICE_NAME" || true
-  curl -fsS "http://${HOST}:${PORT}/health" && echo || echo "health: недоступен"
+  echo
+  ss -tlnp | grep ":${PORT}" || echo "порт ${PORT}: не слушается"
+  curl -fsS "$(health_url)" && echo || echo "health: недоступен"
 }
 
 cmd_logs() {
@@ -150,17 +192,31 @@ cmd_restart() {
 
 usage() {
   cat <<EOF
-Deckva AI — Ubuntu deploy
+Deckva AI — Ubuntu deploy (порт ${PORT})
 
-  ./deploy/ubuntu.sh setup              # venv + pip + .env
-  sudo ./deploy/ubuntu.sh install       # systemd + enable + start
+Полный пайплайн:
+  cd ~/servers/deckva_ai          # свой путь
+  chmod +x deploy/ubuntu.sh
+  ./deploy/ubuntu.sh setup
+  nano .env                       # OPENROUTER_API_KEY=...
+  sudo DECKVA_AI_HOST=0.0.0.0 ./deploy/ubuntu.sh install
+  sudo ufw allow 9000/tcp         # если ufw active
+  curl -sS http://127.0.0.1:9000/health
+
+Уже установлен, только открыть наружу:
+  sudo ./deploy/ubuntu.sh public
+
+Команды:
+  ./deploy/ubuntu.sh setup
+  sudo ./deploy/ubuntu.sh install
+  sudo ./deploy/ubuntu.sh public
   sudo ./deploy/ubuntu.sh restart
   sudo ./deploy/ubuntu.sh uninstall
   ./deploy/ubuntu.sh status
   ./deploy/ubuntu.sh logs [N]
 
-Переменные окружения (опционально):
-  DECKVA_AI_HOST=127.0.0.1
+Env:
+  DECKVA_AI_HOST=0.0.0.0   (default)
   DECKVA_AI_PORT=9000
 EOF
 }
@@ -171,6 +227,7 @@ main() {
   case "$cmd" in
     setup) cmd_setup ;;
     install) cmd_install ;;
+    public) cmd_public ;;
     uninstall) cmd_uninstall ;;
     status) cmd_status ;;
     logs) cmd_logs "${1:-80}" ;;
