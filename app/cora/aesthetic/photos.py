@@ -1,83 +1,101 @@
-"""Multi-slot stock photos for aesthetic collage / split layouts."""
+"""Multi-slot stock photos for aesthetic portrait / collage variants."""
 
 from __future__ import annotations
 
 from typing import Any
 
 from app.cover_media import resolve_cover_src
+from app.schemas import SlideContent
 from app.stock_photos import search_stock_photo, stock_photos_enabled
+from app.templates.aesthetic import aesthetic_variant_for, photo_slot_count, pick_cover_variant
+
+_EXTRA_FLAVORS = (
+    "editorial lifestyle detail flat lay",
+    "cozy aesthetic still life warm light",
+    "autumn flowers bouquet hands",
+    "coffee mug top down lifestyle",
+    "knit sweater book leaves aesthetic",
+)
 
 
-def _empty_sets(slides: list[dict[str, Any]]) -> list[list[str]]:
-    out: list[list[str]] = []
-    for s in slides:
-        n = max(1, len(s.get("image_prompts") or []))
-        # photo slots may exceed prompts; size by max photo slot
-        max_slot = 0
-        for el in s.get("elements") or []:
-            if el.get("kind") == "photo":
-                max_slot = max(max_slot, int(el.get("slot") or 0))
-        out.append([""] * (max(n, max_slot + 1)))
+def _prompts_for_slide(
+    slide: SlideContent,
+    *,
+    slots: int,
+    topic: str,
+    variant: str,
+) -> list[str]:
+    primary = (slide.image_prompt or "").strip() or f"editorial lifestyle aesthetic {topic}"
+    out = [primary]
+    extras: list[str] = []
+    if variant in {"collage", "diptych"}:
+        for it in slide.items or []:
+            text = str(it).strip()
+            if not text:
+                continue
+            ascii_ratio = sum(1 for c in text if ord(c) < 128) / max(1, len(text))
+            words = text.split()
+            if ascii_ratio > 0.85 and 3 <= len(words) <= 12:
+                extras.append(text)
+    fi = 0
+    while len(out) + len(extras) < slots:
+        flavor = _EXTRA_FLAVORS[fi % len(_EXTRA_FLAVORS)]
+        extras.append(f"{flavor} {topic}".strip())
+        fi += 1
+    out.extend(extras)
+    return out[:slots]
+
+
+async def _resolve_row(row: list[str]) -> list[str]:
+    out: list[str] = []
+    for src in row:
+        if not (src or "").strip():
+            out.append("")
+            continue
+        try:
+            out.append(await resolve_cover_src(src))
+        except Exception:
+            out.append("")
     return out
 
 
-def seed_photo_sets_from_user(
+async def build_aesthetic_photo_sets(
     *,
-    slides: list[dict[str, Any]],
-    user_images: list[str],
-) -> list[list[str]]:
-    """Put user images into slide 0 slot0, then remaining mid-slide slots."""
-    sets = _empty_sets(slides)
-    if not user_images or not sets:
-        return sets
-    # cover first
-    sets[0][0] = user_images[0]
-    extras = user_images[1:]
-    ei = 0
-    for si in range(1, max(1, len(sets) - 1)):  # skip CTA
-        for slot in range(len(sets[si])):
-            if ei >= len(extras):
-                return sets
-            if not sets[si][slot]:
-                sets[si][slot] = extras[ei]
-                ei += 1
-    return sets
-
-
-async def fill_aesthetic_photo_sets(
-    *,
-    slides: list[dict[str, Any]],
-    photo_sets: list[list[str]],
+    slides: list[SlideContent],
+    slide_photos: list[str],
     topic: str,
     salt: str,
+    seed: int | str | None = None,
+    design: dict[str, Any] | None = None,
     orientation: str = "portrait",
     use_stock: bool = True,
 ) -> list[list[str]]:
-    """Fill empty slots from image_prompts via Unsplash; resolve all to data URLs when possible."""
-    n = len(slides)
-    sets = [list(row) for row in photo_sets]
-    while len(sets) < n:
-        sets.append([])
-    sets = sets[:n]
+    """One photo list per slide, sized to the fixed template variant."""
+    design = dict(design or {})
+    if not str(design.get("aestheticCoverVariant") or "").strip():
+        design["aestheticCoverVariant"] = pick_cover_variant(
+            seed if seed is not None else salt
+        )
 
+    n = len(slides)
+    sets: list[list[str]] = []
     used: set[str] = set()
-    if use_stock and stock_photos_enabled():
-        for i, s in enumerate(slides):
-            prompts = list(s.get("image_prompts") or [])
-            if i == n - 1 and not any((p or "").strip() for p in sets[i]):
-                # CTA: optional single soft photo if prompt exists
-                if not prompts:
+    stock_on = use_stock and stock_photos_enabled()
+
+    for i, slide in enumerate(slides):
+        variant = aesthetic_variant_for(index=i, total=n, design=design)
+        slots = photo_slot_count(variant)
+        row = [""] * slots
+        primary = slide_photos[i] if i < len(slide_photos) else ""
+        if (primary or "").strip():
+            row[0] = primary.strip()
+
+        prompts = _prompts_for_slide(slide, slots=slots, topic=topic, variant=variant)
+        if stock_on:
+            for slot in range(slots):
+                if (row[slot] or "").strip():
                     continue
-            row = sets[i]
-            need = max(len(row), len(prompts), 1)
-            while len(row) < need:
-                row.append("")
-            for slot, prompt in enumerate(prompts):
-                if slot >= len(row):
-                    row.append("")
-                if row[slot].strip():
-                    continue
-                q = (prompt or "").strip() or f"editorial lifestyle aesthetic {topic}"
+                q = prompts[slot] if slot < len(prompts) else prompts[0]
                 url = await search_stock_photo(
                     q,
                     salt=salt,
@@ -87,19 +105,6 @@ async def fill_aesthetic_photo_sets(
                 )
                 if url:
                     row[slot] = url
-            sets[i] = row
+        sets.append(row)
 
-    # Resolve http(s) → data URL for Fabric safety
-    resolved: list[list[str]] = []
-    for row in sets:
-        out_row: list[str] = []
-        for src in row:
-            if not (src or "").strip():
-                out_row.append("")
-                continue
-            try:
-                out_row.append(await resolve_cover_src(src))
-            except Exception:
-                out_row.append("")
-        resolved.append(out_row)
-    return resolved
+    return [await _resolve_row(row) for row in sets]

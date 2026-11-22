@@ -170,7 +170,6 @@ async def run_cora_fast(req: CoraRunRequest) -> CoraRunResponse:
 
         design = plan.get("design") or {}
         has_cover = bool(design.get("hasCover", True))
-        use_aesthetic = str(design.get("engine") or "") == "aesthetic_llm" or skill_id == "aesthetic"
 
         font_override = resolve_font(req.font)
         if not font_override and req.brand_kit and req.brand_kit.fonts:
@@ -179,185 +178,132 @@ async def run_cora_fast(req: CoraRunRequest) -> CoraRunResponse:
                 if font_override:
                     break
 
-        if use_aesthetic:
-            from app.cora.aesthetic import (
-                assemble_aesthetic_carousel,
-                fill_aesthetic_photo_sets,
-                generate_aesthetic_carousel,
-                seed_photo_sets_from_user,
-                to_slide_contents,
-            )
+        slide_photos = _assign_slide_photos(
+            images=images,
+            slides_count=slides_count,
+            has_cover=has_cover,
+        )
+        cover_src = slide_photos[0] if has_cover and slide_photos else ""
 
-            aesthetic = await generate_aesthetic_carousel(
-                topic=req.topic,
-                slides_count=slides_count,
-                language=req.language,
-                handle=req.handle,
-                model_id=model_id,
-                seed_text=seed_text,
-            )
-            slides = to_slide_contents(aesthetic)
-            photo_sets = seed_photo_sets_from_user(
-                slides=aesthetic["slides"],
-                user_images=images,
-            )
-            orientation = {
-                "1:1": "square",
-                "16:9": "landscape",
-            }.get(req.ratio, "portrait")
-            photo_sets = await fill_aesthetic_photo_sets(
-                slides=aesthetic["slides"],
-                photo_sets=photo_sets,
+        topic_for_llm = req.topic
+        skill_brief = skill_prompt_brief(skill_id) or str(design.get("skillBrief") or "")
+        if skill_brief:
+            topic_for_llm = f"{skill_brief}\n\nBrief: {req.topic}"
+        if seed_text:
+            topic_for_llm = f"{topic_for_llm}\n\nSource copy:\n{seed_text}"
+
+        raw = await fill_and_layout(
+            topic=topic_for_llm,
+            slides_count=slides_count,
+            language=req.language,
+            handle=req.handle,
+            model_id=model_id,
+            plan=plan,
+        )
+        slides = await normalize_slides(
+            raw,
+            topic=topic_for_llm,
+            slides_count=slides_count,
+            language=req.language,
+            handle=req.handle,
+            model_id=model_id,
+            plan=plan,
+        )
+
+        use_stock = bool(req.stock_photos) and stock_photos_enabled()
+        orientation = {
+            "1:1": "square",
+            "16:9": "landscape",
+        }.get(req.ratio, "portrait")
+        if use_stock:
+            slide_photos = await fill_slide_photos_from_prompts(
+                slides=slides,
+                slide_photos=slide_photos,
                 topic=req.topic,
                 salt=cora_run_id,
-                orientation=orientation,
-                use_stock=bool(req.stock_photos),
-            )
-            cover_src = ""
-            if photo_sets and photo_sets[0]:
-                cover_src = photo_sets[0][0] if photo_sets[0] else ""
-
-            mood = str(aesthetic.get("moodHint") or design.get("mood") or "pinterest_editorial")
-            palette = await generate_palette(
-                topic=req.topic,
-                language=req.language,
-                model_id=model_id,
-                mood=mood,
-            )
-            typography = await generate_typography(
-                topic=req.topic,
-                language=req.language,
-                mood=mood,
-                model_id=model_id,
-                show_handle=bool(req.show_handle),
-                font_override=font_override,
-            )
-            if isinstance(design, dict):
-                design["typography"] = typography.to_dict()
-                design["fontFamily"] = typography.font_family
-                design["showHandle"] = typography.show_handle
-                design["engine"] = "aesthetic_llm"
-                design["mood"] = mood
-                design["aesthetic"] = {
-                    "moodHint": aesthetic.get("moodHint"),
-                    "slideCount": len(aesthetic.get("slides") or []),
-                }
-                plan["design"] = design
-            plan["aesthetic"] = aesthetic
-
-            status = "assembling"
-            plan = bind_content_to_plan(plan, slides)
-            assembled = assemble_aesthetic_carousel(
-                aesthetic=aesthetic,
-                ratio=req.ratio,
-                palette=palette,
-                plan=plan,
-                cora_run_id=cora_run_id,
-                save=req.save,
-                slide_photo_sets=photo_sets,
-                typography=typography,
-                handle=req.handle if req.show_handle else (req.handle or ""),
-                show_handle=bool(req.show_handle),
-            )
-        else:
-            slide_photos = _assign_slide_photos(
-                images=images,
-                slides_count=slides_count,
                 has_cover=has_cover,
+                orientation=orientation,
             )
-            cover_src = slide_photos[0] if has_cover and slide_photos else ""
+            # Скачать URL стока → data URL (как user cover), чтобы Fabric не упирался в CORS
+            resolved_photos: list[str] = []
+            for src in slide_photos:
+                if not (src or "").strip():
+                    resolved_photos.append("")
+                    continue
+                try:
+                    resolved_photos.append(await resolve_cover_src(src))
+                except Exception:
+                    resolved_photos.append("")
+            slide_photos = resolved_photos
+            cover_src = slide_photos[0] if has_cover and slide_photos else cover_src
 
-            topic_for_llm = req.topic
-            skill_brief = skill_prompt_brief(skill_id) or str(design.get("skillBrief") or "")
-            if skill_brief:
-                topic_for_llm = f"{skill_brief}\n\nBrief: {req.topic}"
-            if seed_text:
-                topic_for_llm = f"{topic_for_llm}\n\nSource copy:\n{seed_text}"
+        if skill_id == "aesthetic" and isinstance(design, dict):
+            from app.cora.aesthetic import build_aesthetic_photo_sets
+            from app.templates.aesthetic import pick_cover_variant
 
-            raw = await fill_and_layout(
-                topic=topic_for_llm,
-                slides_count=slides_count,
-                language=req.language,
-                handle=req.handle,
-                model_id=model_id,
-                plan=plan,
-            )
-            slides = await normalize_slides(
-                raw,
-                topic=topic_for_llm,
-                slides_count=slides_count,
-                language=req.language,
-                handle=req.handle,
-                model_id=model_id,
-                plan=plan,
-            )
-
-            use_stock = bool(req.stock_photos) and stock_photos_enabled()
-            if use_stock:
-                orientation = {
-                    "1:1": "square",
-                    "16:9": "landscape",
-                }.get(req.ratio, "portrait")
-                slide_photos = await fill_slide_photos_from_prompts(
-                    slides=slides,
-                    slide_photos=slide_photos,
-                    topic=req.topic,
-                    salt=cora_run_id,
-                    has_cover=has_cover,
-                    orientation=orientation,
-                )
-                # Скачать URL стока → data URL (как user cover), чтобы Fabric не упирался в CORS
-                resolved_photos: list[str] = []
-                for src in slide_photos:
-                    if not (src or "").strip():
-                        resolved_photos.append("")
-                        continue
-                    try:
-                        resolved_photos.append(await resolve_cover_src(src))
-                    except Exception:
-                        resolved_photos.append("")
-                slide_photos = resolved_photos
-                cover_src = slide_photos[0] if has_cover and slide_photos else cover_src
-
-            content = content_from_raw(
-                raw=raw,
+            design["aestheticCoverVariant"] = pick_cover_variant(cora_run_id)
+            design.pop("engine", None)
+            photo_sets = await build_aesthetic_photo_sets(
                 slides=slides,
-                handle=req.handle if req.show_handle else (req.handle or ""),
-                cover_src=cover_src,
-            )
-            mood = str(design.get("mood") or "")
-            palette = await generate_palette(
-                topic=req.topic,
-                language=req.language,
-                model_id=model_id,
-                mood=mood,
-            )
-            typography = await generate_typography(
-                topic=req.topic,
-                language=req.language,
-                mood=mood,
-                model_id=model_id,
-                show_handle=bool(req.show_handle),
-                font_override=font_override,
-            )
-            if isinstance(design, dict):
-                design["typography"] = typography.to_dict()
-                design["fontFamily"] = typography.font_family
-                design["showHandle"] = typography.show_handle
-                plan["design"] = design
-
-            status = "assembling"
-            plan = bind_content_to_plan(plan, slides)
-            assembled = assemble_carousel(
-                content=content,
-                ratio=req.ratio,
-                palette=palette,
-                plan=plan,
-                cora_run_id=cora_run_id,
-                save=req.save,
                 slide_photos=slide_photos,
-                typography=typography,
+                topic=req.topic,
+                salt=cora_run_id,
+                seed=cora_run_id,
+                design=design,
+                orientation=orientation,
+                use_stock=use_stock,
             )
+            design["slidePhotoSets"] = photo_sets
+            if photo_sets and photo_sets[0] and photo_sets[0][0]:
+                cover_src = photo_sets[0][0]
+                slide_photos[0] = cover_src
+            plan["design"] = design
+
+        content = content_from_raw(
+            raw=raw,
+            slides=slides,
+            handle=req.handle if req.show_handle else (req.handle or ""),
+            cover_src=cover_src,
+        )
+        mood = str(design.get("mood") or "")
+        palette = await generate_palette(
+            topic=req.topic,
+            language=req.language,
+            model_id=model_id,
+            mood=mood,
+        )
+        typo_fonts = None
+        if skill_id == "aesthetic":
+            from app.fonts import AESTHETIC_FONT_CATALOG
+
+            typo_fonts = AESTHETIC_FONT_CATALOG
+        typography = await generate_typography(
+            topic=req.topic,
+            language=req.language,
+            mood=mood,
+            model_id=model_id,
+            show_handle=bool(req.show_handle),
+            font_override=font_override,
+            allowed_fonts=typo_fonts,
+        )
+        if isinstance(design, dict):
+            design["typography"] = typography.to_dict()
+            design["fontFamily"] = typography.font_family
+            design["showHandle"] = typography.show_handle
+            plan["design"] = design
+
+        status = "assembling"
+        plan = bind_content_to_plan(plan, slides)
+        assembled = assemble_carousel(
+            content=content,
+            ratio=req.ratio,
+            palette=palette,
+            plan=plan,
+            cora_run_id=cora_run_id,
+            save=req.save,
+            slide_photos=slide_photos,
+            typography=typography,
+        )
         status = "done"
         response = CoraRunResponse(
             coraRunId=cora_run_id,

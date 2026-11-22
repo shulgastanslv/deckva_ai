@@ -33,6 +33,15 @@ FONT_CATALOG: tuple[str, ...] = (
     "Unbounded",
 )
 
+# Aesthetic skill: только эти 5 sans (по референсам quiet-luxury editorial).
+AESTHETIC_FONT_CATALOG: tuple[str, ...] = (
+    "Poppins",
+    "Montserrat",
+    "Manrope",
+    "Raleway",
+    "Ubuntu",
+)
+
 _FONT_BY_LOWER = {f.lower(): f for f in FONT_CATALOG}
 
 HEAD_SIZE_MAX = 70
@@ -116,10 +125,17 @@ def list_fonts() -> list[dict[str, str]]:
     return [{"id": f, "family": f} for f in FONT_CATALOG]
 
 
-def resolve_font(name: str | None) -> str | None:
+def resolve_font(
+    name: str | None,
+    *,
+    allowed: tuple[str, ...] | list[str] | None = None,
+) -> str | None:
     if not name or not str(name).strip():
         return None
     key = str(name).strip().lower()
+    if allowed is not None:
+        by_lower = {f.lower(): f for f in allowed}
+        return by_lower.get(key)
     return _FONT_BY_LOWER.get(key)
 
 
@@ -132,11 +148,17 @@ def parse_typography(
     *,
     show_handle: bool = True,
     font_override: str | None = None,
+    allowed_fonts: tuple[str, ...] | list[str] | None = None,
 ) -> Typography:
     data = raw if isinstance(raw, dict) else {}
-    font = resolve_font(font_override) or resolve_font(str(data.get("fontFamily") or data.get("font") or ""))
+    catalog = tuple(allowed_fonts) if allowed_fonts else FONT_CATALOG
+    font = resolve_font(font_override, allowed=catalog) or resolve_font(
+        str(data.get("fontFamily") or data.get("font") or ""),
+        allowed=catalog,
+    )
     if not font:
-        font = DEFAULT_TYPOGRAPHY.font_family
+        # Prefer Montserrat when present in the restricted catalog, else first entry.
+        font = resolve_font("Montserrat", allowed=catalog) or catalog[0]
 
     scale_raw = str(data.get("typeScale") or data.get("type_scale") or DEFAULT_SCALE_ID).strip().lower()
     if scale_raw not in TYPE_SCALES:
@@ -171,25 +193,34 @@ async def generate_typography(
     model_id: str | None = None,
     show_handle: bool = True,
     font_override: str | None = None,
+    allowed_fonts: tuple[str, ...] | list[str] | None = None,
 ) -> Typography:
     """ИИ выбирает шрифт из каталога и подходящую шкалу размеров."""
-    if font_override and resolve_font(font_override):
-        # Пользователь задал шрифт — ИИ только scale
+    catalog = tuple(allowed_fonts) if allowed_fonts else FONT_CATALOG
+    locked = resolve_font(font_override, allowed=catalog) if font_override else None
+
+    if locked:
+        # Пользователь задал шрифт (и он в allowed) — ИИ только scale
         raw = await chat_json(
             system=prompts.TYPOGRAPHY_SYSTEM,
             user=prompts.typography_user(
                 topic=topic,
                 language=language,
                 mood=mood,
-                fonts=FONT_CATALOG,
+                fonts=catalog,
                 scales=tuple(TYPE_SCALES.keys()),
-                font_locked=resolve_font(font_override),
+                font_locked=locked,
             ),
             temperature=0.9,
             max_tokens=300,
             model_id=model_id,
         )
-        return parse_typography(raw, show_handle=show_handle, font_override=font_override)
+        return parse_typography(
+            raw,
+            show_handle=show_handle,
+            font_override=locked,
+            allowed_fonts=catalog,
+        )
 
     raw = await chat_json(
         system=prompts.TYPOGRAPHY_SYSTEM,
@@ -197,14 +228,14 @@ async def generate_typography(
             topic=topic,
             language=language,
             mood=mood,
-            fonts=FONT_CATALOG,
+            fonts=catalog,
             scales=tuple(TYPE_SCALES.keys()),
         ),
         temperature=0.95,
         max_tokens=300,
         model_id=model_id,
     )
-    return parse_typography(raw, show_handle=show_handle, font_override=None)
+    return parse_typography(raw, show_handle=show_handle, font_override=None, allowed_fonts=catalog)
 
 
 def scaled_size(base: int, *, kind: str = "head") -> int:

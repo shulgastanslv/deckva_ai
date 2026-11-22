@@ -23,9 +23,9 @@ uvicorn app.main:app --reload --port 8000
 | `app/cora/` | CORA Fast: plan → execute → assemble |
 | `app/content.py` | tool `llm.fill_and_layout` |
 | `app/palette.py` / `templates/` | палитра + Fabric templates (OOP registry по skillId) |
-| `app/cora/aesthetic/` | эксперимент: `skillId=aesthetic` → LLM сама invents Pinterest layout |
+| `app/cora/aesthetic/` | multi-slot фото для aesthetic collage |
 | `app/stock_photos.py` | Unsplash search по `image_prompt` |
-| `app/templates/` | визуальные шаблоны по `skillId` (manifesto/niches/lookbook + legacy aesthetic fallback) |
+| `app/templates/` | визуальные шаблоны по `skillId` (aesthetic/manifesto/niches/lookbook + …) |
 
 ## API
 

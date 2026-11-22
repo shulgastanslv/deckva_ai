@@ -31,13 +31,21 @@ def _bootstrap() -> None:
         register(cls())
 
 
+_SKILL_ALIASES = {
+    "manifesto": "aesthetic",
+    "niches": "aesthetic",
+    "lookbook": "aesthetic",
+}
+
+
 def get_template(skill_id: str | None = None) -> CarouselTemplate:
     """Resolve template. Unknown / empty skill → default (current) template."""
     _bootstrap()
     if not skill_id:
         return _DEFAULT
-    key = skill_id.strip().lower()
-    return _BY_SKILL.get(key, _DEFAULT)
+    raw = skill_id.strip().lower()
+    key = _SKILL_ALIASES.get(raw, raw)
+    return _BY_SKILL.get(key) or _BY_SKILL.get(raw, _DEFAULT)
 
 
 def list_skill_template_ids() -> list[str]:

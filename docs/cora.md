@@ -21,9 +21,9 @@ flowchart LR
 | Фаза | Что делает | LLM? |
 |------|------------|------|
 | **Intake** | Читает тему, фото, skill, handle | нет |
-| **Plan** | Решает структуру слайдов и mood | нет (рандом от runId); у `aesthetic` — engine=aesthetic_llm |
+| **Plan** | Решает структуру слайдов и mood | нет (рандом от runId) |
 | **Execute** | Пишет тексты, палитру, шрифт; ищет фото | да |
-| **Assemble** | Собирает Fabric-слайды по шаблону | нет; у `aesthetic` — из LLM `elements[]` |
+| **Assemble** | Собирает Fabric-слайды по шаблону skill | нет |
 
 Статусы run: `planning` → `executing` → `assembling` → `done` / `failed`.
 
@@ -210,18 +210,23 @@ flowchart TD
 
 Без skill — CORA сама кидает роли из пулов (hook / offer / proof / …).
 
-### Ветка `aesthetic` (эксперимент)
+### Skill `aesthetic`
 
-При `skillId=aesthetic` CORA уходит в **отдельный engine** (`design.engine = aesthetic_llm`):
+Как остальные skills: LLM пишет только тексты (`fill_and_layout`), геометрия — в
+`AestheticTemplate` (`app/templates/aesthetic.py`).
 
-1. Plan почти не диктует layout/mood-пулы (mood фиксируется как `pinterest_editorial`).
-2. Execute зовёт отдельный промпт: модель сама придумывает композицию каждого слайда
-   (`elements[]` в нормализованных координатах 0..1) — full-bleed + cream type + pills,
-   2×2 collage, split seam, stack tips и т.п. (Pinterest aesthetic).
-3. Assemble **не** берёт `AestheticTemplate` из registry — рендерит Fabric из `elements[]`.
-4. Фото: несколько `image_prompts` на слайд → Unsplash по слотам collage/split.
+Два ровных варианта по референсам (цикл mid + cover от runId):
 
-Остальные skills по-прежнему: рандом design → тексты LLM → жёсткий OOP-шаблон.
+- `portrait` — full-bleed фото, одинаковые отступы: top-left tagline, top-right `@handle`,
+  на cover — прямой центрированный заголовок + `/callout/`, на mid — left caption (2 строки)
+- `collage` — равный 2×2 grid, чёрная скруглённая плашка по центру, footer tag + `@handle`
+- CTA: `cta_soft`
+
+Mood: `pinterest_editorial`. `collage` берёт 4 фото-слота
+(`design.slidePhotoSets`) через Unsplash.
+
+Шрифты только из 5: Poppins, Montserrat, Manrope, Raleway, Ubuntu
+(`AESTHETIC_FONT_CATALOG` в `app/fonts.py`).
 
 ---
 
@@ -233,7 +238,8 @@ flowchart TD
 | Design + skeleton plan | `app/cora/plan.py` |
 | Skills | `app/cora/skills.py` |
 | Тексты LLM | `app/content.py` + `app/prompts.py` |
-| Aesthetic / Pinterest LLM | `app/cora/aesthetic/` |
+| Aesthetic layouts | `app/templates/aesthetic.py` (`portrait` / `collage`) |
+| Aesthetic multi-slot photos | `app/cora/aesthetic/photos.py` |
 | Палитра | `app/palette.py` |
 | Шрифты | `app/fonts.py` |
 | Сборка Fabric | `app/cora/assemble.py` + `app/templates/` |

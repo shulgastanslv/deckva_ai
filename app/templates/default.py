@@ -15,6 +15,7 @@ from app.templates.base import (
     clip,
     content_start_y,
     counter,
+    cover_photo_frame,
     footer,
     grid,
     image,
@@ -44,22 +45,101 @@ class DefaultTemplate(CarouselTemplate):
         with_grid: bool,
         cover_src: str,
         photo_ratio: float = 0.48,
+        cover_placement: str = "top",
+        cover_rounded: bool = False,
     ) -> dict[str, Any]:
-        ratio = max(0.32, min(0.58, float(photo_ratio or 0.48)))
-        photo_h = lay.h * ratio
-        if cover_src.strip():
+        frame = cover_photo_frame(
+            lay,
+            placement=cover_placement,
+            photo_ratio=photo_ratio,
+            rounded=cover_rounded,
+        )
+        pl = float(frame["left"])
+        pt = float(frame["top"])
+        pw = float(frame["width"])
+        ph = float(frame["height"])
+        rx = float(frame.get("rx") or 0)
+        ry = float(frame.get("ry") or 0)
+        text_left = float(frame["text_left"])
+        text_width = float(frame["text_width"])
+        zone_top = float(frame["text_zone_top"])
+        zone_bottom = float(frame["text_zone_bottom"])
+
+        has_src = bool(cover_src.strip())
+        if has_src:
             objs: list[dict[str, Any]] = [
-                image(cover_src.strip(), left=0, top=0, width=lay.w, height=photo_h, swibp_slot="image")
+                image(
+                    cover_src.strip(),
+                    left=pl,
+                    top=pt,
+                    width=pw,
+                    height=ph,
+                    swibp_slot="image",
+                    rx=rx,
+                    ry=ry,
+                )
             ]
-            handle_fill = "#FFFFFF"
-            counter_fill = "#FFFFFF"
         else:
-            objs = [rect(left=0, top=0, width=lay.w, height=photo_h, fill=palette.photo, swibp_slot="image")]
-            handle_fill = palette.text
-            counter_fill = palette.text
+            objs = [
+                rect(
+                    left=pl,
+                    top=pt,
+                    width=pw,
+                    height=ph,
+                    fill=palette.photo,
+                    rx=rx,
+                    ry=ry,
+                    swibp_slot="image",
+                )
+            ]
+
+        place = cover_placement if cover_placement in ("top", "bottom", "left", "right") else "top"
+        handle_on_photo = place in ("top", "left")
+        counter_on_photo = place in ("top", "right")
+        handle_fill = "#FFFFFF" if handle_on_photo else palette.text
+        counter_fill = "#FFFFFF" if counter_on_photo else palette.text
 
         if with_grid:
-            objs.extend(grid(lay.w, lay.h, lay.step, palette, top=photo_h, height=lay.h - photo_h))
+            # Grid sits in the text zone so it stays editable as one canvas group.
+            if place == "bottom":
+                objs.extend(grid(lay.w, lay.h, lay.step, palette, top=0, height=max(1.0, zone_bottom)))
+            elif place == "left":
+                objs.extend(
+                    grid(
+                        lay.w,
+                        lay.h,
+                        lay.step,
+                        palette,
+                        left=text_left - lay.pad * 0.2,
+                        top=0,
+                        width=lay.w - (text_left - lay.pad * 0.2),
+                        height=float(lay.h),
+                    )
+                )
+            elif place == "right":
+                objs.extend(
+                    grid(
+                        lay.w,
+                        lay.h,
+                        lay.step,
+                        palette,
+                        left=0,
+                        top=0,
+                        width=max(1.0, text_left + text_width + lay.pad * 0.2),
+                        height=float(lay.h),
+                    )
+                )
+            else:
+                objs.extend(
+                    grid(
+                        lay.w,
+                        lay.h,
+                        lay.step,
+                        palette,
+                        top=zone_top - PHOTO_TEXT_GAP,
+                        height=lay.h - (zone_top - PHOTO_TEXT_GAP),
+                    )
+                )
 
         objs.append(meta_handle(handle, lay, fill=handle_fill, font_weight="600"))
         objs.append(counter(index, lay, fill=counter_fill))
@@ -67,10 +147,17 @@ class DefaultTemplate(CarouselTemplate):
         heading = clip(s.heading, 120)
         body = clip(s.body, 200) if s.body else ""
         total_h = stack_height(
-            heading, body, [], "", lay, head_size=self.head_px, body_size=self.body_px
+            heading,
+            body,
+            [],
+            "",
+            lay,
+            head_size=self.head_px,
+            body_size=self.body_px,
+            width=text_width,
         )
-        y = content_start_y(total_h, lay, zone_top=photo_h + PHOTO_TEXT_GAP, zone_bottom=lay.h)
-        y = max(y, photo_h + PHOTO_TEXT_GAP)
+        y = content_start_y(total_h, lay, zone_top=zone_top, zone_bottom=zone_bottom)
+        y = max(y, zone_top)
 
         head, bottom = text_block(
             heading,
@@ -80,6 +167,8 @@ class DefaultTemplate(CarouselTemplate):
             font_weight="bold",
             fill=palette.text,
             swibp_style="heading",
+            left=text_left,
+            width=text_width,
         )
         objs.append(head)
         if body:
@@ -91,6 +180,8 @@ class DefaultTemplate(CarouselTemplate):
                 font_weight="500",
                 fill=palette.text,
                 swibp_style="body",
+                left=text_left,
+                width=text_width,
             )
             objs.append(b)
 

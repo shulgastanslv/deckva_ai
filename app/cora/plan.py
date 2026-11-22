@@ -75,9 +75,16 @@ def decide_design(
     if rng.random() < 0.4:
         layout_pool = list(reversed(layout_pool))
 
-    grid_mode = rng.choice(("edges", "all", "none", "cover_only"))
+    # Sparse grid only — never stamp every slide ("all" retired).
+    grid_mode = rng.choices(
+        ("edges", "none", "cover_only", "cta_only"),
+        weights=(0.38, 0.34, 0.18, 0.10),
+        k=1,
+    )[0]
     accent_bias = round(rng.uniform(0.25, 0.75), 2)
     photo_ratio = round(rng.uniform(0.38, 0.55), 2) if has_cover else None
+    cover_placement = rng.choice(("top", "bottom", "left", "right"))
+    cover_rounded = rng.random() < 0.30
 
     mid_roles: list[str] = []
     mid_layouts: list[str] = []
@@ -92,6 +99,8 @@ def decide_design(
         "gridMode": grid_mode,
         "accentBias": accent_bias,
         "photoRatio": photo_ratio,
+        "coverPlacement": cover_placement,
+        "coverRounded": cover_rounded,
         "midRoles": mid_roles,
         "midLayouts": mid_layouts,
         "preferredContentLayouts": list(_CONTENT_LAYOUTS),

@@ -15,12 +15,16 @@ SkillId = Literal[
     "myths",
     "framework",
     "pricing",
-    # Reference full-bleed lifestyle covers (blog carousel mood)
+    # One editorial skill — cover family randomized on the server
     "aesthetic",
-    "manifesto",
-    "niches",
-    "lookbook",
 ]
+
+# Old separate editorial skills → aesthetic
+_SKILL_ALIASES: dict[str, str] = {
+    "manifesto": "aesthetic",
+    "niches": "aesthetic",
+    "lookbook": "aesthetic",
+}
 
 # Fixed mid roles/layouts per skill (first = cover/hook, last = cta).
 _SKILL_SPECS: dict[str, dict[str, Any]] = {
@@ -136,51 +140,20 @@ _SKILL_SPECS: dict[str, dict[str, Any]] = {
     "aesthetic": {
         "slidesCount": 6,
         "hasCover": True,
-        "engine": "aesthetic_llm",
         "midRoles": ["offer", "howto", "proof", "lesson"],
-        "midLayouts": ["statement", "list", "quote", "statement"],
-        "preferredContentLayouts": ["statement", "orange_quote", "tips"],
+        "midLayouts": ["statement", "tips", "quote", "statement"],
+        "preferredContentLayouts": ["statement", "tips", "orange_quote"],
         "brief": (
-            "Pinterest aesthetic carousel. Quiet-luxury / cozy editorial lifestyle. "
-            "LLM invents each slide composition (full-bleed + cream stacked type + frosted pills, "
-            "2x2 collage, split portrait/flat-lay seam, stacked tip photos). Soft CTA at the end."
-        ),
-    },
-    "manifesto": {
-        "slidesCount": 5,
-        "hasCover": True,
-        "midRoles": ["hook", "shift", "lesson"],
-        "midLayouts": ["statement", "quote", "statement"],
-        "preferredContentLayouts": ["statement", "orange_quote"],
-        "brief": (
-            "Manifesto carousel. Cover heading is a short stacked slogan (3–6 words), "
-            "image_prompt = bright outdoor lifestyle portrait with sky/negative space. "
-            "Body on cover = tiny footnote. Mid: unpack the stance; close with CTA."
-        ),
-    },
-    "niches": {
-        "slidesCount": 7,
-        "hasCover": True,
-        "midRoles": ["list", "list", "list", "list", "list"],
-        "midLayouts": ["list", "list", "list", "list", "list"],
-        "preferredContentLayouts": ["tips", "statement"],
-        "brief": (
-            "Niches / ideas-for-experts carousel. Cover: short bracket-style title in heading, "
-            "items = 5–8 niche names (косметолог, фотограф…), callout = subtitle. "
-            "image_prompt = warm editorial lifestyle interior, person seated, space for floating tags. "
-            "Each mid slide = one niche tip; end with CTA."
-        ),
-    },
-    "lookbook": {
-        "slidesCount": 6,
-        "hasCover": True,
-        "midRoles": ["list", "list", "list", "proof"],
-        "midLayouts": ["list", "list", "list", "statement"],
-        "preferredContentLayouts": ["tips", "statement", "results"],
-        "brief": (
-            "Lookbook / photo-ideas carousel. Cover heading = idea title, callout or body = short "
-            "save-cue (e.g. сохраняй). image_prompt = fashion street style, top-down or full-body, "
-            "muted autumn tones, room for centered type. Mid slides = frame ideas; end with CTA."
+            "Aesthetic / editorial lifestyle carousel (quiet-luxury, lookbook, manifesto mood). "
+            "Cover layout is CHOSEN ON THE SERVER — write copy that works for any of: "
+            "centered poetic title, left cream hook with a [bracketed] word, vertical diptych "
+            "title, 2×2 collage bar, stacked manifesto slogan, or niche tags. "
+            "Cover heading: short poetic line (3–8 words); callout = soft /сохраняй/-style cue; "
+            "tag = blog footer or bio line; badges = optional 1–2 short meta labels; "
+            "items = optional 4–8 short niche/tag words (косметолог, фотограф…) when it fits. "
+            "Mid: one calm tip, frame idea, or stance line per slide. "
+            "image_prompt every photo slide (english Unsplash 4–8 words, lifestyle / flat-lay / "
+            "fashion / coffee / autumn). CTA: soft invitation, not salesy."
         ),
     },
 }
@@ -190,6 +163,7 @@ def normalize_skill_id(raw: str | None) -> str | None:
     if not raw:
         return None
     key = raw.strip().lower()
+    key = _SKILL_ALIASES.get(key, key)
     return key if key in _SKILL_SPECS else None
 
 
@@ -233,15 +207,12 @@ def apply_skill_to_design(
         out["preferredContentLayouts"] = list(preferred)
     out["skillId"] = normalize_skill_id(skill_id)
     out["skillBrief"] = spec.get("brief") or ""
-    engine = spec.get("engine")
-    if engine:
-        out["engine"] = str(engine)
-        # Aesthetic branch: LLM owns mood/layout — stop random mood pools dominating.
-        if engine == "aesthetic_llm":
-            out["mood"] = "pinterest_editorial"
-            out["gridMode"] = "none"
-            out["photoRatio"] = 1.0
-            out["accentBias"] = 0.2
+    if out.get("skillId") == "aesthetic":
+        out["mood"] = "pinterest_editorial"
+        out["gridMode"] = "none"
+        out["photoRatio"] = 1.0
+        out["accentBias"] = 0.2
+        out.pop("engine", None)
     return out
 
 

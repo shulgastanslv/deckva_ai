@@ -8,7 +8,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, ClassVar
 
-from app.fabric import canvas_size, image, normalize_aspect, rect, slide, textbox
+from app.fabric import canvas_size, group, image, normalize_aspect, rect, slide, textbox
 from app.fonts import (
     Typography,
     current_font,
@@ -27,8 +27,11 @@ SIZE_BODY = 25
 SIZE_META = 20
 GAP = 20
 LINE_HEIGHT = 0.90
-GRID_OPACITY = 0.22
+# Faint decorative canvas grid — edit as one Group (swibpRole=canvas).
+GRID_OPACITY = 0.07
 PHOTO_TEXT_GAP = 2
+COVER_PLACEMENTS = ("top", "bottom", "left", "right")
+COVER_ROUNDED_CHANCE = 0.30
 
 
 def _font() -> str:
@@ -98,6 +101,57 @@ def text_h(text: str, font_size: int, width: float) -> float:
     return lines * font_size * max(LINE_HEIGHT, 0.95) + 4
 
 
+def split_stack(text: str, *, max_lines: int = 6) -> list[str]:
+    """Split words into ≤ max_lines for stacked cover titles."""
+    words = [w for w in (text or "").split() if w]
+    if not words:
+        return [""]
+    if len(words) <= max_lines:
+        return words
+    n = max_lines
+    out: list[str] = []
+    i = 0
+    for line_i in range(n):
+        left = n - line_i
+        take = max(1, round((len(words) - i) / left))
+        chunk = words[i : i + take]
+        if not chunk:
+            break
+        out.append(" ".join(chunk))
+        i += take
+    if i < len(words):
+        out[-1] = (out[-1] + " " + " ".join(words[i:])).strip()
+    return out
+
+
+def full_bleed_photo(
+    lay: L,
+    cover_src: str,
+    palette: Palette,
+    *,
+    dim: float = 0.22,
+) -> list[dict[str, Any]]:
+    """Full-canvas photo (or palette placeholder) with optional darken overlay."""
+    if (cover_src or "").strip():
+        objs: list[dict[str, Any]] = [
+            image(cover_src.strip(), left=0, top=0, width=lay.w, height=lay.h, swibp_slot="image")
+        ]
+        if dim > 0:
+            objs.append(
+                rect(
+                    left=0,
+                    top=0,
+                    width=lay.w,
+                    height=lay.h,
+                    fill="#000000",
+                    opacity=dim,
+                    swibp_slot="accent",
+                )
+            )
+        return objs
+    return [rect(left=0, top=0, width=lay.w, height=lay.h, fill=palette.photo, swibp_slot="image")]
+
+
 def grid(
     w: int,
     h: int,
@@ -106,38 +160,58 @@ def grid(
     *,
     top: float = 0,
     height: float | None = None,
+    left: float = 0,
+    width: float | None = None,
 ) -> list[dict[str, Any]]:
-    hh = height if height is not None else h - top
-    objs: list[dict[str, Any]] = []
+    """One editable canvas Group (not a pile of loose lines)."""
+    ww = float(width) if width is not None else float(w) - left
+    hh = float(height) if height is not None else float(h) - top
+    if ww <= 1 or hh <= 1 or step <= 0:
+        return []
+
+    lines: list[dict[str, Any]] = []
     x = 0.0
-    while x <= w + 0.5:
-        objs.append(
+    while x <= ww + 0.5:
+        lines.append(
             rect(
                 left=x,
-                top=top,
+                top=0,
                 width=1.2,
                 height=hh,
                 fill=palette.grid,
-                opacity=GRID_OPACITY,
+                opacity=1.0,
                 swibp_slot="accent",
             )
         )
         x += step
-    y = top
-    while y <= top + hh + 0.5:
-        objs.append(
+    y = 0.0
+    while y <= hh + 0.5:
+        lines.append(
             rect(
                 left=0,
                 top=y,
-                width=w,
+                width=ww,
                 height=1.2,
                 fill=palette.grid,
-                opacity=GRID_OPACITY,
+                opacity=1.0,
                 swibp_slot="accent",
             )
         )
         y += step
-    return objs
+
+    return [
+        group(
+            lines,
+            left=left,
+            top=top,
+            width=ww,
+            height=hh,
+            opacity=GRID_OPACITY,
+            swibp_role="canvas",
+            swibp_name="Canvas",
+            swibp_slot="accent",
+        )
+    ]
 
 
 def counter(index: int, lay: L, *, fill: str) -> dict[str, Any]:
@@ -242,16 +316,124 @@ def stack_height(
     bullet: str = "→",
     head_size: int = SIZE_HEAD,
     body_size: int = SIZE_BODY,
+    width: float | None = None,
 ) -> float:
-    width = lay.w - lay.pad * 2
-    h = text_h(heading, head_size, width)
+    text_w = float(width) if width is not None else lay.w - lay.pad * 2
+    h = text_h(heading, head_size, text_w)
     if items:
-        h += GAP + text_h(items_text(items, bullet=bullet), body_size, width)
+        h += GAP + text_h(items_text(items, bullet=bullet), body_size, text_w)
     elif body:
-        h += GAP + text_h(body, body_size, width)
+        h += GAP + text_h(body, body_size, text_w)
     if callout:
-        h += GAP + text_h(callout, body_size, width - 32) + 28
+        h += GAP + text_h(callout, body_size, max(40.0, text_w - 32)) + 28
     return h
+
+
+def pick_cover_style(rng: random.Random, design: dict[str, Any] | None = None) -> tuple[str, bool]:
+    """Placement + optional floating rounded cover (not edge-flush)."""
+    design = design or {}
+    placement = str(design.get("coverPlacement") or "").strip().lower()
+    if placement not in COVER_PLACEMENTS:
+        placement = rng.choice(COVER_PLACEMENTS)
+    if "coverRounded" in design:
+        rounded = bool(design.get("coverRounded"))
+    else:
+        rounded = rng.random() < COVER_ROUNDED_CHANCE
+    return placement, rounded
+
+
+def cover_photo_frame(
+    lay: L,
+    *,
+    placement: str,
+    photo_ratio: float,
+    rounded: bool,
+) -> dict[str, float]:
+    """Geometry for cover image + text zone.
+
+    Returns photo box + text_* keys (left/width/zone_top/zone_bottom) + rx/ry.
+    """
+    ratio = max(0.32, min(0.58, float(photo_ratio or 0.48)))
+    inset = (lay.pad * 0.9) if rounded else 0.0
+    radius = 32.0 if rounded else 0.0
+    place = placement if placement in COVER_PLACEMENTS else "top"
+
+    if place == "bottom":
+        photo_h = lay.h * ratio
+        if rounded:
+            photo = {
+                "left": inset,
+                "top": lay.h - photo_h,
+                "width": lay.w - inset * 2,
+                "height": photo_h - inset,
+            }
+        else:
+            photo = {"left": 0.0, "top": lay.h - photo_h, "width": float(lay.w), "height": photo_h}
+        text = {
+            "left": lay.pad,
+            "width": lay.w - lay.pad * 2,
+            "zone_top": lay.pad * 1.2,
+            "zone_bottom": photo["top"] - PHOTO_TEXT_GAP,
+        }
+    elif place == "left":
+        photo_w = lay.w * ratio
+        if rounded:
+            photo = {
+                "left": inset,
+                "top": inset,
+                "width": max(80.0, photo_w - inset),
+                "height": lay.h - inset * 2,
+            }
+            text_left = photo["left"] + photo["width"] + PHOTO_TEXT_GAP + lay.pad * 0.35
+        else:
+            photo = {"left": 0.0, "top": 0.0, "width": photo_w, "height": float(lay.h)}
+            text_left = photo_w + PHOTO_TEXT_GAP + lay.pad * 0.25
+        text = {
+            "left": text_left,
+            "width": max(120.0, lay.w - text_left - lay.pad),
+            "zone_top": lay.pad * 1.8,
+            "zone_bottom": float(lay.h),
+        }
+    elif place == "right":
+        photo_w = lay.w * ratio
+        if rounded:
+            photo = {
+                "left": lay.w - photo_w,
+                "top": inset,
+                "width": max(80.0, photo_w - inset),
+                "height": lay.h - inset * 2,
+            }
+            text_right = photo["left"] - PHOTO_TEXT_GAP - lay.pad * 0.35
+        else:
+            photo = {"left": lay.w - photo_w, "top": 0.0, "width": photo_w, "height": float(lay.h)}
+            text_right = photo["left"] - PHOTO_TEXT_GAP - lay.pad * 0.25
+        text = {
+            "left": lay.pad,
+            "width": max(120.0, text_right - lay.pad),
+            "zone_top": lay.pad * 1.8,
+            "zone_bottom": float(lay.h),
+        }
+    else:  # top
+        photo_h = lay.h * ratio
+        if rounded:
+            photo = {
+                "left": inset,
+                "top": inset,
+                "width": lay.w - inset * 2,
+                "height": max(80.0, photo_h - inset),
+            }
+        else:
+            photo = {"left": 0.0, "top": 0.0, "width": float(lay.w), "height": photo_h}
+        text = {
+            "left": lay.pad,
+            "width": lay.w - lay.pad * 2,
+            "zone_top": photo["top"] + photo["height"] + PHOTO_TEXT_GAP,
+            "zone_bottom": float(lay.h),
+        }
+
+    photo["rx"] = radius
+    photo["ry"] = radius
+    return {**photo, **{f"text_{k}": v for k, v in text.items()}}
 
 
 def content_start_y(
@@ -337,14 +519,16 @@ def callout_block(
 
 
 def with_grid_for(index: int, total: int, grid_mode: str) -> bool:
+    """Grid is sparse by design — never every mid slide."""
     is_first = index == 0
     is_last = index == total - 1
     if grid_mode == "none":
         return False
-    if grid_mode == "all":
-        return True
     if grid_mode == "cover_only":
         return is_first
+    if grid_mode == "cta_only":
+        return is_last
+    # "edges" (default) and legacy "all" → first + last only
     return is_first or is_last
 
 
@@ -446,6 +630,8 @@ class CarouselTemplate(ABC):
         with_grid: bool,
         cover_src: str,
         photo_ratio: float = 0.48,
+        cover_placement: str = "top",
+        cover_rounded: bool = False,
     ) -> dict[str, Any]:
         raise NotImplementedError
 
@@ -515,6 +701,7 @@ class CarouselTemplate(ABC):
         )
 
         if layout == "cover":
+            cover_placement, cover_rounded = pick_cover_style(rng, design)
             out = self.layout_cover(
                 s,
                 lay,
@@ -525,6 +712,8 @@ class CarouselTemplate(ABC):
                 with_grid=with_grid,
                 cover_src=photo,
                 photo_ratio=photo_ratio,
+                cover_placement=cover_placement,
+                cover_rounded=cover_rounded,
             )
         elif layout == "orange_quote":
             out = self.layout_accent_quote(s, lay, handle, category, palette, index=index)
@@ -533,6 +722,7 @@ class CarouselTemplate(ABC):
                 s, lay, handle, category, palette, index=index, with_grid=with_grid
             )
         else:
+            # Mid slides: grid only on edges/cta — never stamp every content slide
             out = self.layout_content(
                 s,
                 lay,
@@ -540,7 +730,7 @@ class CarouselTemplate(ABC):
                 category,
                 palette,
                 index=index,
-                with_grid=with_grid and grid_mode == "all",
+                with_grid=False,
             )
         return _strip_handles(out)
 
@@ -624,6 +814,7 @@ class CarouselTemplate(ABC):
 
 # Re-export fabric primitives used by subclasses
 __all__ = [
+    "COVER_PLACEMENTS",
     "CarouselTemplate",
     "FONT",
     "GAP",
@@ -637,17 +828,22 @@ __all__ = [
     "clip",
     "content_start_y",
     "counter",
+    "cover_photo_frame",
     "current_font",
     "footer",
+    "full_bleed_photo",
     "grid",
+    "group",
     "handle_text",
     "image",
     "items_text",
     "make_layout",
     "meta_handle",
+    "pick_cover_style",
     "rect",
     "scaled_size",
     "slide",
+    "split_stack",
     "stack_height",
     "text_block",
     "text_h",
